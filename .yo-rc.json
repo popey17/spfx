@@ -1,0 +1,25 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "whichFolder": "subdir",
+    "solutionName": "follow-the-path",
+    "environment": "spo",
+    "packageManager": "npm",
+    "componentType": "webpart",
+    "template": "react",
+    "componentName": "FollowThePath",
+    "componentDescription": "Follow the Path",
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "18.20.8",
+    "sdksVersions": {
+      "@microsoft/microsoft-graph-client": "3.0.2",
+      "@microsoft/teams-js": "2.24.0"
+    },
+    "version": "1.20.0",
+    "libraryName": "follow-the-path",
+    "libraryId": "96c7024e-13ae-4953-a13d-9229d314c631",
+    "solutionShortDescription": "follow-the-path description",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false
+  }
+}

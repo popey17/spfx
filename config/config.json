@@ -1,0 +1,18 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "follow-the-path-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/followThePath/FollowThePathWebPart.js",
+          "manifest": "./src/webparts/followThePath/FollowThePathWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "FollowThePathWebPartStrings": "lib/webparts/followThePath/loc/{locale}.js"
+  }
+}

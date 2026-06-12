@@ -1,0 +1,134 @@
+@import '~@fluentui/react/dist/sass/References.scss';
+
+.followThePath {
+  padding: 1.5rem;
+  color: "[theme:bodyText, default: #323130]";
+  color: var(--bodyText);
+  font-family: $ms-font-family-fallbacks;
+}
+
+.header {
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+
+.subtitle {
+  margin: 0;
+  opacity: 0.85;
+}
+
+.path {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+}
+
+.step {
+  flex: 1 1 8rem;
+}
+
+.stepButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid "[theme:neutralLight, default: #edebe9]";
+  border-radius: 8px;
+  background: "[theme:white, default: #ffffff]";
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    border-color: "[theme:themePrimary, default: #0078d4]";
+  }
+}
+
+.stepMarker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: "[theme:neutralLighter, default: #f3f2f1]";
+}
+
+.stepLabel {
+  font-weight: 600;
+}
+
+.complete {
+  .stepMarker {
+    background: "[theme:themePrimary, default: #0078d4]";
+    color: #fff;
+  }
+}
+
+.current {
+  .stepButton {
+    border-color: "[theme:themePrimary, default: #0078d4]";
+    box-shadow: 0 0 0 1px "[theme:themePrimary, default: #0078d4]";
+  }
+
+  .stepMarker {
+    background: "[theme:themePrimary, default: #0078d4]";
+    color: #fff;
+  }
+}
+
+.upcoming {
+  opacity: 0.75;
+}
+
+.panel {
+  padding: 1.25rem;
+  border-radius: 8px;
+  background: "[theme:neutralLighterAlt, default: #faf9f8]";
+  border: 1px solid "[theme:neutralLight, default: #edebe9]";
+
+  h3 {
+    margin: 0 0 0.5rem;
+  }
+
+  p {
+    margin: 0 0 1rem;
+  }
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.navButton {
+  padding: 0.5rem 1rem;
+  border: 1px solid "[theme:neutralSecondary, default: #605e5c]";
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.primary {
+  border-color: "[theme:themePrimary, default: #0078d4]";
+  background: "[theme:themePrimary, default: #0078d4]";
+  color: #fff;
+}

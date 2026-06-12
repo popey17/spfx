@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "follow-the-path-client-side-solution",
+    "id": "96c7024e-13ae-4953-a13d-9229d314c631",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.20.0"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "Follow the Path web part"
+      },
+      "longDescription": {
+        "default": "A SharePoint Framework web part that guides users along a configurable path."
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "follow-the-path Feature",
+        "description": "The feature that activates elements of the follow-the-path solution.",
+        "id": "8a1da707-6905-433b-bbfb-71d0ec23fb97",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/follow-the-path.sppkg"
+  }
+}
