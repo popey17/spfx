@@ -3,6 +3,7 @@ const bgUrl: string = require('./assets/img_bg.png');
 const characterUrl: string = require('./assets/img_character.png');
 const coinUrl: string = require('./assets/img_coin.png');
 const shieldUrl: string = require('./assets/img_shield.png');
+const menuBgUrl: string = require('./assets/img_menuBg.png');
 const coinSoundUrl: string = require('./assets/sound/coin.mp3');
 const crushSoundUrl: string = require('./assets/sound/crush.mp3');
 const gameMusic01Url: string = require('./assets/sound/gameMusic01.mp3');
@@ -17,7 +18,8 @@ const obstacleUrls: string[] = [
 type GameState = 'waiting' | 'playing' | 'paused' | 'question' | 'gameover';
 
 interface Question {
-  text: string;
+  scenario: string;
+  prompt: string;
   options: string[];
   correctIndex: number;
 }
@@ -57,6 +59,7 @@ interface LoadedAssets {
   character: HTMLImageElement;
   coin: HTMLImageElement;
   shield: HTMLImageElement;
+  menuBackground: HTMLImageElement;
   obstacles: HTMLImageElement[];
   obstacleMeta: SpriteMeta[];
   characterMeta: SpriteMeta;
@@ -71,10 +74,91 @@ const LEGACY_HEIGHT = 450;
 const SCALE = DESIGN_HEIGHT / LEGACY_HEIGHT;
 
 const s = (value: number): number => Math.round(value * SCALE);
-const font = (size: number, weight = ''): string => {
-  const px = s(size);
-  return weight ? weight + ' ' + px + 'px Segoe UI, Tahoma, sans-serif' : px + 'px Segoe UI, Tahoma, sans-serif';
+const FONT_FAMILY = 'Francois One';
+const menuFont = (size: number): string => s(size) + 'px "' + FONT_FAMILY + '", sans-serif';
+
+// =============================================================================
+// SHARED MENU PANEL — same frame for welcome + question (1920×1080 design px)
+// =============================================================================
+const MENU_PANEL = {
+  width: 1487,
+  height: 874,
+  paddingTop: 133,
+  paddingBottom: 160
 };
+
+// =============================================================================
+// WELCOME MENU LAYOUT — adjust font sizes and element positions here
+// All values are 1920×1080 design pixels unless marked (scaled)
+// =============================================================================
+const WELCOME_MENU = {
+  titleFontSize: 30,
+  titleOffsetY: 0,
+
+  descriptionFontSize: 12,
+  descriptionOffsetY: 100,
+  descriptionLineHeight: 14,
+  descriptionWidthInset: 200,
+
+  bestScoreFontSize: 10,
+  bestScoreGap: 10,
+
+  startButtonWidth: 320,
+  startButtonHeight: 100,
+  startButtonBottomOffset: 100,
+  startButtonFontSize: 16,
+  startButtonRadius: 8,
+  startButtonCornerInset: 6,
+  startButtonCornerArm: 10,
+
+  arrowHintsBottomOffset: 56,
+  arrowHintsFontSize: 13,
+  arrowKeySize: 28,
+  arrowKeyGap: 8,
+
+  mascotShipHeight: 150,
+  mascotShipBottomOffset: 5,
+  mascotShipLeftOffset: 18,
+  speechBubbleWidth: 100,
+  speechBubbleOffsetY: 52
+};
+
+// =============================================================================
+// QUESTION POPUP LAYOUT — adjust font sizes and element positions here
+// All values are 1920×1080 design pixels unless marked (scaled)
+// =============================================================================
+const QUESTION_POPUP = {
+  shieldSize: 88,
+  shieldTopOffset: -36,
+
+  badgeOffsetY: 133,
+  badgeFontSize: 18,
+  badgePaddingX: 48,
+  badgeHeight: 60,
+
+  scenarioFontSize: 18,
+  scenarioGapBelowBadge: 36,
+  scenarioLineHeight: 30,
+  scenarioWidthInset: 120,
+
+  promptFontSize: 20,
+  promptGapBelowScenario: 20,
+
+  horizontalPadding: 100,
+  answerButtonGap: 24,
+  answerButtonHeight: 110,
+  answerButtonBottomOffset: 24,
+  answerButtonFontSize: 14,
+  answerButtonLineHeight: 22,
+  answerButtonRadius: 8,
+  answerButtonCornerInset: 8,
+  answerButtonCornerArm: 14,
+
+  feedbackFontSize: 14,
+  feedbackBottomOffset: 16
+};
+
+const font = menuFont;
 
 const PLAYER_X = s(50);
 const PLAYER_HEIGHT = s(84);
@@ -104,41 +188,51 @@ const SPAWN_SEPARATION = s(12);
 
 const QUESTIONS: Question[] = [
   {
-    text: 'What does being accountable mean?',
+    scenario:
+      'YOU NOTICE A CONFIGURATION CHANGE YOU MADE LAST WEEK MAY BE AFFECTING SYSTEM PERFORMANCE. NO INCIDENTS HAVE BEEN REPORTED YET.',
+    prompt: 'WHAT DO YOU DO?',
     options: [
-      'Blaming others when things go wrong',
-      'Owning your actions and their impact'
+      'Assume monitoring tools will catch serious problems',
+      'Flag it to your team and investigate the potential impact immediately'
     ],
     correctIndex: 1
   },
   {
-    text: 'You notice a mistake in a report before it is sent. What should you do?',
+    scenario:
+      'YOU SPOT AN ERROR IN A REPORT BEFORE IT IS SENT TO STAKEHOLDERS. NOBODY ELSE HAS NOTICED IT YET.',
+    prompt: 'WHAT DO YOU DO?',
     options: [
-      'Ignore it if nobody has noticed yet',
-      'Fix it and let the team know'
+      'Leave it and hope nobody notices',
+      'Fix it and let the team know right away'
     ],
     correctIndex: 1
   },
   {
-    text: 'A deadline is at risk because of your task. What is the accountable response?',
+    scenario:
+      'A DEADLINE IS AT RISK BECAUSE OF A TASK YOU OWN. THE TEAM IS COUNTING ON YOU TO DELIVER ON TIME.',
+    prompt: 'WHAT DO YOU DO?',
     options: [
-      'Stay quiet and hope it improves',
-      'Escalate early and propose a plan'
+      'Stay quiet and try to catch up alone',
+      'Escalate early and propose a recovery plan'
     ],
     correctIndex: 1
   },
   {
-    text: 'Which behaviour best shows accountability in a team?',
+    scenario:
+      "YOU COMMITTED TO AN ACTION IN LAST WEEK'S MEETING BUT A BLOCKER IS STOPPING YOU FROM PROGRESSING.",
+    prompt: 'WHAT DO YOU DO?',
     options: [
-      'Taking credit only when outcomes are good',
-      'Following up on commitments and communicating blockers'
+      'Wait until the next meeting to mention it',
+      'Follow up on your commitment and communicate the blocker'
     ],
     correctIndex: 1
   },
   {
-    text: 'After a project setback, what should an accountable leader do first?',
+    scenario:
+      'A PROJECT SETBACK JUST HAPPENED AND THE TEAM IS LOOKING FOR A WAY FORWARD.',
+    prompt: 'WHAT DO YOU DO?',
     options: [
-      'Identify who to blame publicly',
+      'Focus on who caused the problem',
       'Review what happened, learn, and agree next steps'
     ],
     correctIndex: 1
@@ -171,6 +265,8 @@ const MOVEMENT_KEYS: Record<string, number> = {
 const PREVENT_DEFAULT_KEYS: Record<string, boolean> = {
   ArrowUp: true,
   ArrowDown: true,
+  ArrowLeft: true,
+  ArrowRight: true,
   w: true,
   W: true,
   s: true,
@@ -213,6 +309,7 @@ export class EndlessRunnerGame {
   private _questionIndex: number = 0;
   private _questionFeedback: string = '';
   private _selectedAnswerIndex: number = 0;
+  private readonly _fullscreenLayout: boolean;
   private _assets: LoadedAssets | undefined;
   private readonly _music: HTMLAudioElement;
   private readonly _coinSound: HTMLAudioElement;
@@ -222,6 +319,7 @@ export class EndlessRunnerGame {
 
   constructor(target: HTMLElement) {
     this._bestScore = this._loadBestScore();
+    this._fullscreenLayout = this._detectFullscreenLayout();
     this._playerWidth = Math.round(
       PLAYER_HEIGHT * (CHARACTER_SPRITE_NATIVE.width / CHARACTER_SPRITE_NATIVE.height)
     );
@@ -234,10 +332,16 @@ export class EndlessRunnerGame {
     this._music = this._createAudio(gameMusic01Url, MUSIC_VOLUME, true);
     this._coinSound = this._createAudio(coinSoundUrl, SFX_VOLUME, false);
     this._crushSound = this._createAudio(crushSoundUrl, SFX_VOLUME, false);
+    this._ensureGameFont();
+
+    if (this._fullscreenLayout) {
+      this._applyFullscreenPageLayout(target);
+    }
 
     this._container = document.createElement('div');
-    this._container.style.cssText =
-      'position:relative;width:100%;display:flex;justify-content:center;align-items:center;overflow:hidden;';
+    this._container.style.cssText = this._fullscreenLayout
+      ? 'position:fixed;top:0;left:0;width:100vw;height:100vh;display:flex;justify-content:center;align-items:center;overflow:hidden;background:#0a1628;z-index:9999;'
+      : 'position:relative;width:100%;display:flex;justify-content:center;align-items:center;overflow:hidden;';
 
     this._viewport = document.createElement('div');
     this._viewport.style.cssText = 'position:relative;overflow:hidden;flex-shrink:0;';
@@ -292,6 +396,7 @@ export class EndlessRunnerGame {
     this._canvas.removeEventListener('mousedown', this._boundMouseDown);
     this._resizeObserver?.disconnect();
     this._stopMusic();
+    this._restorePageLayout();
 
     if (this._container.parentElement) {
       this._container.parentElement.removeChild(this._container);
@@ -325,13 +430,15 @@ export class EndlessRunnerGame {
       this._loadImage(characterUrl),
       this._loadImage(coinUrl),
       this._loadImage(shieldUrl),
+      this._loadImage(menuBgUrl),
       Promise.all(obstacleUrls.map((url) => this._loadImage(url)))
-    ]).then(([background, character, coin, shield, obstacles]) => {
+    ]).then(([background, character, coin, shield, menuBackground, obstacles]) => {
       this._assets = {
         background,
         character,
         coin,
         shield,
+        menuBackground,
         obstacles,
         obstacleMeta: OBSTACLE_NATIVE,
         characterMeta: CHARACTER_SPRITE_NATIVE,
@@ -341,23 +448,103 @@ export class EndlessRunnerGame {
     });
   }
 
-  private _resizeCanvas(): void {
+  private _detectFullscreenLayout(): boolean {
+    const path = window.location.pathname.toLowerCase();
+    const params = new URLSearchParams(window.location.search);
+
+    return (
+      path.indexOf('follow-the-path') !== -1 ||
+      params.get('env') === 'WebView' ||
+      params.get('layout') === 'fullscreen'
+    );
+  }
+
+  private _applyFullscreenPageLayout(target: HTMLElement): void {
+    target.style.cssText =
+      'width:100%;min-height:0;padding:0;margin:0;overflow:visible;background:transparent;';
+
+    let element: HTMLElement | null = target.parentElement;
+    while (element && element !== document.body) {
+      element.style.maxWidth = 'none';
+      element.style.width = '100%';
+      element.style.padding = '0';
+      element.style.margin = '0';
+      element = element.parentElement;
+    }
+
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    document.body.style.margin = '0';
+    document.body.style.background = '#0a1628';
+
+    const pageHeader = document.getElementById('spSiteHeader');
+    if (pageHeader) {
+      pageHeader.style.display = 'none';
+    }
+
+    const commandBar = document.querySelector('[data-automation-id="pageCommandBar"]') as HTMLElement | null;
+    if (commandBar) {
+      commandBar.style.display = 'none';
+    }
+  }
+
+  private _restorePageLayout(): void {
+    if (!this._fullscreenLayout) {
+      return;
+    }
+
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+    document.body.style.margin = '';
+    document.body.style.background = '';
+
+    const pageHeader = document.getElementById('spSiteHeader');
+    if (pageHeader) {
+      pageHeader.style.display = '';
+    }
+
+    const commandBar = document.querySelector('[data-automation-id="pageCommandBar"]') as HTMLElement | null;
+    if (commandBar) {
+      commandBar.style.display = '';
+    }
+  }
+
+  private _getAvailableSize(): { width: number; height: number } {
+    if (this._fullscreenLayout) {
+      return {
+        width: window.innerWidth,
+        height: window.innerHeight
+      };
+    }
+
     const parent = this._container.parentElement;
-    const availableWidth = parent?.clientWidth || window.innerWidth;
-    const availableHeight = window.innerHeight;
+    return {
+      width: parent?.clientWidth || window.innerWidth,
+      height: window.innerHeight
+    };
+  }
+
+  private _resizeCanvas(): void {
+    const available = this._getAvailableSize();
+    const viewportAspect = available.width / available.height;
 
     let displayWidth: number;
     let displayHeight: number;
 
-    if (availableWidth > DESIGN_WIDTH) {
-      displayHeight = availableHeight;
+    if (viewportAspect > DESIGN_ASPECT) {
+      displayHeight = available.height;
       displayWidth = displayHeight * DESIGN_ASPECT;
     } else {
-      displayWidth = availableWidth;
+      displayWidth = available.width;
       displayHeight = displayWidth / DESIGN_ASPECT;
     }
 
-    this._container.style.height = displayHeight + 'px';
+    if (this._fullscreenLayout) {
+      this._container.style.height = '100vh';
+    } else {
+      this._container.style.height = displayHeight + 'px';
+    }
+
     this._viewport.style.width = displayWidth + 'px';
     this._viewport.style.height = displayHeight + 'px';
 
@@ -439,7 +626,15 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'question') {
-      const question = this._getCurrentQuestion();
+      if (event.key === 'ArrowLeft') {
+        this._selectedAnswerIndex = 0;
+        return;
+      }
+
+      if (event.key === 'ArrowRight') {
+        this._selectedAnswerIndex = 1;
+        return;
+      }
 
       if (event.key === 'ArrowUp') {
         this._selectedAnswerIndex = 0;
@@ -447,7 +642,7 @@ export class EndlessRunnerGame {
       }
 
       if (event.key === 'ArrowDown') {
-        this._selectedAnswerIndex = Math.min(1, question.options.length - 1);
+        this._selectedAnswerIndex = 1;
         return;
       }
 
@@ -1045,7 +1240,7 @@ export class EndlessRunnerGame {
 
     this._applyHudTextShadow();
     this._ctx.fillStyle = '#FFFFFF';
-    this._ctx.font = font(18, 'bold');
+    this._ctx.font = font(18);
     this._ctx.textAlign = 'left';
     this._ctx.textBaseline = 'middle';
 
@@ -1068,7 +1263,7 @@ export class EndlessRunnerGame {
     const scoreLabel = 'SCORE:';
     const scoreValue = String(this._score);
 
-    this._ctx.font = font(18, 'bold');
+    this._ctx.font = font(18);
     const labelWidth = this._ctx.measureText(scoreLabel).width;
     const valueWidth = this._ctx.measureText(scoreValue).width;
     const coinGap = s(6);
@@ -1189,30 +1384,80 @@ export class EndlessRunnerGame {
     }
   }
 
-  private _getWelcomePanelBounds(): { x: number; y: number; width: number; height: number } {
-    const width = DESIGN_WIDTH;
-    const height = DESIGN_HEIGHT;
-    const panelWidth = Math.min(width - s(48), s(620));
-    const panelHeight = Math.min(height - s(40), s(310));
+  private _ensureGameFont(): void {
+    const fontLinkId = 'follow-the-path-francois-one';
+    if (document.getElementById(fontLinkId)) {
+      return;
+    }
+
+    const link = document.createElement('link');
+    link.id = fontLinkId;
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Francois+One&display=swap';
+    document.head.appendChild(link);
+  }
+
+  private _getMenuPanelBounds(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: (DESIGN_WIDTH - MENU_PANEL.width) / 2,
+      y: (DESIGN_HEIGHT - MENU_PANEL.height) / 2,
+      width: MENU_PANEL.width,
+      height: MENU_PANEL.height
+    };
+  }
+
+  private _getMenuContentBounds(panel: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }): { x: number; y: number; width: number; height: number; bottom: number } {
+    const y = panel.y + MENU_PANEL.paddingTop;
+    const height = panel.height - MENU_PANEL.paddingTop - MENU_PANEL.paddingBottom;
 
     return {
-      x: (width - panelWidth) / 2,
-      y: Math.max(s(12), (height - panelHeight) / 2 - s(8)),
-      width: panelWidth,
-      height: panelHeight
+      x: panel.x,
+      y,
+      width: panel.width,
+      height,
+      bottom: y + height
     };
+  }
+
+  private _drawMenuPanelBackground(panel: { x: number; y: number; width: number; height: number }): void {
+    if (this._assets?.menuBackground) {
+      this._ctx.drawImage(
+        this._assets.menuBackground,
+        panel.x,
+        panel.y,
+        panel.width,
+        panel.height
+      );
+      return;
+    }
+
+    this._roundRectPath(panel.x, panel.y, panel.width, panel.height, s(16));
+    this._ctx.fillStyle = WELCOME_PANEL_FILL;
+    this._ctx.fill();
+    this._ctx.strokeStyle = WELCOME_ACCENT;
+    this._ctx.lineWidth = s(2);
+    this._ctx.stroke();
+  }
+
+  private _getWelcomePanelBounds(): { x: number; y: number; width: number; height: number } {
+    return this._getMenuPanelBounds();
   }
 
   private _getStartButtonBounds(): { x: number; y: number; width: number; height: number } {
     const panel = this._getWelcomePanelBounds();
-    const buttonWidth = Math.min(s(220), panel.width - s(80));
-    const buttonHeight = s(44);
+    const content = this._getMenuContentBounds(panel);
+    const buttonWidth = Math.min(WELCOME_MENU.startButtonWidth, content.width - WELCOME_MENU.descriptionWidthInset);
 
     return {
       x: panel.x + (panel.width - buttonWidth) / 2,
-      y: panel.y + panel.height - s(98),
+      y: content.bottom - WELCOME_MENU.startButtonHeight - WELCOME_MENU.startButtonBottomOffset,
       width: buttonWidth,
-      height: buttonHeight
+      height: WELCOME_MENU.startButtonHeight
     };
   }
 
@@ -1309,8 +1554,8 @@ export class EndlessRunnerGame {
   }
 
   private _drawArrowKeyHints(centerX: number, y: number): void {
-    const keySize = s(28);
-    const gap = s(8);
+    const keySize = s(WELCOME_MENU.arrowKeySize);
+    const gap = s(WELCOME_MENU.arrowKeyGap);
     const totalWidth = keySize * 2 + gap;
     const startX = centerX - totalWidth / 2;
 
@@ -1338,7 +1583,7 @@ export class EndlessRunnerGame {
       this._ctx.fill();
     }
 
-    this._ctx.font = font(13);
+    this._ctx.font = menuFont(WELCOME_MENU.arrowHintsFontSize);
     this._ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
     this._ctx.textAlign = 'center';
     this._ctx.textBaseline = 'top';
@@ -1366,7 +1611,7 @@ export class EndlessRunnerGame {
     this._ctx.textBaseline = 'top';
     this._ctx.fillText('To be', x + s(12), y + s(10));
 
-    this._ctx.font = font(14, 'bold');
+    this._ctx.font = font(14);
     this._ctx.fillText('ACCOUNTABLE', x + s(12), y + s(24));
 
     this._ctx.font = font(10);
@@ -1375,212 +1620,243 @@ export class EndlessRunnerGame {
   }
 
   private _drawWelcomeMascot(): void {
-    const shipHeight = s(110);
+    const shipHeight = s(WELCOME_MENU.mascotShipHeight);
     const shipWidth = Math.round(shipHeight * (CHARACTER_SPRITE_NATIVE.width / CHARACTER_SPRITE_NATIVE.height));
-    const shipX = s(18);
-    const shipY = DESIGN_HEIGHT - shipHeight - s(10);
+    const shipX = s(WELCOME_MENU.mascotShipLeftOffset);
+    const shipY = DESIGN_HEIGHT - shipHeight - s(WELCOME_MENU.mascotShipBottomOffset);
 
     if (this._assets) {
       this._ctx.drawImage(this._assets.character, shipX, shipY, shipWidth, shipHeight);
     }
 
-    const bubbleWidth = Math.min(s(250), DESIGN_WIDTH * 0.42);
+    const bubbleWidth = Math.min(s(WELCOME_MENU.speechBubbleWidth), DESIGN_WIDTH * 0.42);
     const bubbleX = shipX + shipWidth - s(20);
-    const bubbleY = shipY - s(52);
+    const bubbleY = shipY - s(WELCOME_MENU.speechBubbleOffsetY);
     this._drawSpeechBubble(bubbleX, bubbleY, bubbleWidth);
   }
 
   private _drawWelcomeScreen(): void {
     const panel = this._getWelcomePanelBounds();
+    const content = this._getMenuContentBounds(panel);
     const centerX = panel.x + panel.width / 2;
 
-    this._roundRectPath(panel.x, panel.y, panel.width, panel.height, s(16));
-    this._ctx.fillStyle = WELCOME_PANEL_FILL;
-    this._ctx.fill();
-    this._ctx.strokeStyle = WELCOME_ACCENT;
-    this._ctx.lineWidth = s(2);
-    this._ctx.stroke();
-    this._drawCornerBrackets(
-      panel.x + s(10),
-      panel.y + s(10),
-      panel.width - s(20),
-      panel.height - s(20),
-      s(18),
-      WELCOME_ACCENT
-    );
+    this._drawMenuPanelBackground(panel);
 
     this._ctx.fillStyle = '#FFFFFF';
     this._ctx.textAlign = 'center';
     this._ctx.textBaseline = 'top';
-    this._ctx.font = font(28, 'bold');
-    this._ctx.fillText('FOLLOW THE PATH', centerX, panel.y + s(24));
+    this._ctx.font = menuFont(WELCOME_MENU.titleFontSize);
+    this._ctx.fillText('FOLLOW THE PATH', centerX, content.y + WELCOME_MENU.titleOffsetY);
 
     const descriptionBottom = this._drawWrappedText(
       'Guide your Wreckoon through the obstacles & answer each question as they increase in difficulty.',
       centerX,
-      panel.y + s(68),
-      panel.width - s(48),
-      s(20),
-      font(15),
+      content.y + WELCOME_MENU.descriptionOffsetY,
+      content.width - WELCOME_MENU.descriptionWidthInset,
+      s(WELCOME_MENU.descriptionLineHeight),
+      menuFont(WELCOME_MENU.descriptionFontSize),
       'rgba(255, 255, 255, 0.9)',
       'center'
     );
 
-    this._ctx.font = font(14);
+    this._ctx.font = menuFont(WELCOME_MENU.bestScoreFontSize);
     this._ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
     this._ctx.textAlign = 'center';
-    this._ctx.fillText('Best score: ' + this._bestScore, centerX, descriptionBottom + s(14));
+    this._ctx.fillText('Best score: ' + this._bestScore, centerX, descriptionBottom + WELCOME_MENU.bestScoreGap);
 
     const button = this._getStartButtonBounds();
-    this._roundRectPath(button.x, button.y, button.width, button.height, s(8));
+    this._roundRectPath(button.x, button.y, button.width, button.height, s(WELCOME_MENU.startButtonRadius));
     this._ctx.fillStyle = 'rgba(18, 22, 30, 0.95)';
     this._ctx.fill();
     this._ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     this._ctx.lineWidth = s(1);
     this._ctx.stroke();
     this._drawCornerBrackets(
-      button.x + s(6),
-      button.y + s(6),
-      button.width - s(12),
-      button.height - s(12),
-      s(10),
+      button.x + s(WELCOME_MENU.startButtonCornerInset),
+      button.y + s(WELCOME_MENU.startButtonCornerInset),
+      button.width - s(WELCOME_MENU.startButtonCornerInset * 2),
+      button.height - s(WELCOME_MENU.startButtonCornerInset * 2),
+      s(WELCOME_MENU.startButtonCornerArm),
       WELCOME_ACCENT
     );
 
-    this._ctx.font = font(16, 'bold');
+    this._ctx.font = menuFont(WELCOME_MENU.startButtonFontSize);
     this._ctx.fillStyle = '#FFFFFF';
     this._ctx.textAlign = 'center';
     this._ctx.textBaseline = 'middle';
     this._ctx.fillText('START GAME', button.x + button.width / 2, button.y + button.height / 2);
 
-    this._drawArrowKeyHints(centerX, panel.y + panel.height - s(52));
+    this._drawArrowKeyHints(centerX, content.bottom - WELCOME_MENU.arrowHintsBottomOffset);
     this._drawWelcomeMascot();
   }
 
   private _getQuestionPanelBounds(): { x: number; y: number; width: number; height: number } {
-    const width = DESIGN_WIDTH;
-    const height = DESIGN_HEIGHT;
-    const panelWidth = Math.min(width - s(80), s(760));
-    const panelHeight = Math.min(height - s(60), s(520));
-
-    return {
-      x: (width - panelWidth) / 2,
-      y: (height - panelHeight) / 2,
-      width: panelWidth,
-      height: panelHeight
-    };
+    return this._getMenuPanelBounds();
   }
 
   private _getAnswerButtonBounds(index: number): { x: number; y: number; width: number; height: number } {
     const panel = this._getQuestionPanelBounds();
-    const buttonWidth = panel.width - s(80);
-    const buttonHeight = s(52);
-    const buttonGap = s(14);
-    const buttonsTop = panel.y + s(210);
+    const content = this._getMenuContentBounds(panel);
+    const availableWidth = content.width - QUESTION_POPUP.horizontalPadding * 2;
+    const buttonWidth = (availableWidth - QUESTION_POPUP.answerButtonGap) / 2;
+    const buttonsTop =
+      content.bottom - QUESTION_POPUP.answerButtonHeight - QUESTION_POPUP.answerButtonBottomOffset;
+    const startX = panel.x + QUESTION_POPUP.horizontalPadding;
 
     return {
-      x: panel.x + (panel.width - buttonWidth) / 2,
-      y: buttonsTop + index * (buttonHeight + buttonGap),
+      x: startX + index * (buttonWidth + QUESTION_POPUP.answerButtonGap),
+      y: buttonsTop,
       width: buttonWidth,
-      height: buttonHeight
+      height: QUESTION_POPUP.answerButtonHeight
     };
+  }
+
+  private _drawPowerShieldBadge(centerX: number, y: number): number {
+    const label = 'POWER SHIELD';
+    this._ctx.font = menuFont(QUESTION_POPUP.badgeFontSize);
+    const textWidth = this._ctx.measureText(label).width;
+    const badgeWidth = textWidth + QUESTION_POPUP.badgePaddingX;
+    const badgeHeight = QUESTION_POPUP.badgeHeight;
+    const badgeX = centerX - badgeWidth / 2;
+
+    this._ctx.fillStyle = WELCOME_ACCENT;
+    this._ctx.fillRect(badgeX, y, badgeWidth, badgeHeight);
+
+    this._ctx.fillStyle = '#FFFFFF';
+    this._ctx.textAlign = 'center';
+    this._ctx.textBaseline = 'middle';
+    this._ctx.fillText(label, centerX, y + badgeHeight / 2);
+
+    return y + badgeHeight;
+  }
+
+  private _drawWrappedTextInRect(
+    text: string,
+    rect: { x: number; y: number; width: number; height: number },
+    fontStyle: string,
+    color: string,
+    lineHeight: number
+  ): void {
+    this._ctx.font = fontStyle;
+    this._ctx.fillStyle = color;
+    this._ctx.textAlign = 'center';
+    this._ctx.textBaseline = 'top';
+
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let line = '';
+
+    for (let i = 0; i < words.length; i++) {
+      const testLine = line ? line + ' ' + words[i] : words[i];
+      if (this._ctx.measureText(testLine).width > rect.width - 24 && line) {
+        lines.push(line);
+        line = words[i];
+      } else {
+        line = testLine;
+      }
+    }
+
+    if (line) {
+      lines.push(line);
+    }
+
+    const totalHeight = lines.length * lineHeight;
+    let currentY = rect.y + (rect.height - totalHeight) / 2;
+
+    for (let j = 0; j < lines.length; j++) {
+      this._ctx.fillText(lines[j], rect.x + rect.width / 2, currentY);
+      currentY += lineHeight;
+    }
+  }
+
+  private _drawAnswerButton(
+    bounds: { x: number; y: number; width: number; height: number },
+    label: string,
+    selected: boolean
+  ): void {
+    this._roundRectPath(bounds.x, bounds.y, bounds.width, bounds.height, QUESTION_POPUP.answerButtonRadius);
+    this._ctx.fillStyle = selected ? 'rgba(245, 124, 0, 0.22)' : 'rgba(18, 22, 30, 0.95)';
+    this._ctx.fill();
+    this._ctx.strokeStyle = selected ? WELCOME_ACCENT : 'rgba(255, 255, 255, 0.2)';
+    this._ctx.lineWidth = selected ? 2 : 1;
+    this._ctx.stroke();
+    this._drawCornerBrackets(
+      bounds.x + QUESTION_POPUP.answerButtonCornerInset,
+      bounds.y + QUESTION_POPUP.answerButtonCornerInset,
+      bounds.width - QUESTION_POPUP.answerButtonCornerInset * 2,
+      bounds.height - QUESTION_POPUP.answerButtonCornerInset * 2,
+      QUESTION_POPUP.answerButtonCornerArm,
+      WELCOME_ACCENT
+    );
+    this._drawWrappedTextInRect(
+      label,
+      bounds,
+      menuFont(QUESTION_POPUP.answerButtonFontSize),
+      '#FFFFFF',
+      QUESTION_POPUP.answerButtonLineHeight
+    );
   }
 
   private _drawQuestionScreen(): void {
     const width = DESIGN_WIDTH;
     const height = DESIGN_HEIGHT;
     const panel = this._getQuestionPanelBounds();
+    const content = this._getMenuContentBounds(panel);
     const centerX = panel.x + panel.width / 2;
     const question = this._getCurrentQuestion();
 
     this._ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
     this._ctx.fillRect(0, HUD_HEIGHT, width, height - HUD_HEIGHT);
 
-    this._roundRectPath(panel.x, panel.y, panel.width, panel.height, s(16));
-    this._ctx.fillStyle = WELCOME_PANEL_FILL;
-    this._ctx.fill();
-    this._ctx.strokeStyle = WELCOME_ACCENT;
-    this._ctx.lineWidth = s(2);
-    this._ctx.stroke();
-    this._drawCornerBrackets(
-      panel.x + s(10),
-      panel.y + s(10),
-      panel.width - s(20),
-      panel.height - s(20),
-      s(18),
-      WELCOME_ACCENT
-    );
+    this._drawMenuPanelBackground(panel);
 
     if (this._assets) {
-      const shieldSize = s(56);
       this._ctx.drawImage(
         this._assets.shield,
-        centerX - shieldSize / 2,
-        panel.y + s(20),
-        shieldSize,
-        shieldSize
+        centerX - QUESTION_POPUP.shieldSize / 2,
+        panel.y + QUESTION_POPUP.shieldTopOffset,
+        QUESTION_POPUP.shieldSize,
+        QUESTION_POPUP.shieldSize
       );
     }
 
-    this._ctx.fillStyle = '#FFFFFF';
-    this._ctx.textAlign = 'center';
-    this._ctx.textBaseline = 'top';
-    this._ctx.font = font(22, 'bold');
-    this._ctx.fillText('ACCOUNTABILITY CHECK', centerX, panel.y + s(86));
+    const badgeBottom = this._drawPowerShieldBadge(centerX, panel.y + QUESTION_POPUP.badgeOffsetY);
 
-    this._ctx.font = font(13);
-    this._ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-    this._ctx.fillText(
-      'Question ' + (Math.min(this._questionIndex, QUESTIONS.length - 1) + 1) + ' of ' + QUESTIONS.length,
+    const scenarioBottom = this._drawWrappedText(
+      question.scenario,
       centerX,
-      panel.y + s(118)
-    );
-
-    this._drawWrappedText(
-      question.text,
-      centerX,
-      panel.y + s(148),
-      panel.width - s(64),
-      s(24),
-      font(18),
+      badgeBottom + QUESTION_POPUP.scenarioGapBelowBadge,
+      content.width - QUESTION_POPUP.scenarioWidthInset,
+      QUESTION_POPUP.scenarioLineHeight,
+      menuFont(QUESTION_POPUP.scenarioFontSize),
       '#FFFFFF',
       'center'
     );
 
+    this._ctx.fillStyle = '#FFFFFF';
+    this._ctx.textAlign = 'center';
+    this._ctx.textBaseline = 'top';
+    this._ctx.font = menuFont(QUESTION_POPUP.promptFontSize);
+    this._ctx.fillText(question.prompt, centerX, scenarioBottom + QUESTION_POPUP.promptGapBelowScenario);
+
     for (let i = 0; i < question.options.length; i++) {
-      const button = this._getAnswerButtonBounds(i);
-      const isSelected = i === this._selectedAnswerIndex;
-
-      this._roundRectPath(button.x, button.y, button.width, button.height, s(8));
-      this._ctx.fillStyle = isSelected ? 'rgba(245, 124, 0, 0.28)' : 'rgba(18, 22, 30, 0.95)';
-      this._ctx.fill();
-      this._ctx.strokeStyle = isSelected ? WELCOME_ACCENT : 'rgba(255, 255, 255, 0.2)';
-      this._ctx.lineWidth = isSelected ? s(2) : s(1);
-      this._ctx.stroke();
-
-      this._ctx.font = font(15);
-      this._ctx.fillStyle = '#FFFFFF';
-      this._ctx.textAlign = 'center';
-      this._ctx.textBaseline = 'middle';
-      this._ctx.fillText(
-        (i + 1) + '. ' + question.options[i],
-        button.x + button.width / 2,
-        button.y + button.height / 2
+      this._drawAnswerButton(
+        this._getAnswerButtonBounds(i),
+        question.options[i],
+        i === this._selectedAnswerIndex
       );
     }
 
     if (this._questionFeedback) {
-      this._ctx.font = font(14, 'bold');
+      this._ctx.font = menuFont(QUESTION_POPUP.feedbackFontSize);
       this._ctx.fillStyle = '#FF8A80';
       this._ctx.textAlign = 'center';
       this._ctx.textBaseline = 'top';
-      this._ctx.fillText(this._questionFeedback, centerX, panel.y + panel.height - s(36));
-    } else {
-      this._ctx.font = font(13);
-      this._ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-      this._ctx.textAlign = 'center';
-      this._ctx.textBaseline = 'top';
-      this._ctx.fillText('Press 1 or 2, or use arrow keys and Enter', centerX, panel.y + panel.height - s(36));
+      this._ctx.fillText(
+        this._questionFeedback,
+        centerX,
+        panel.y + panel.height - MENU_PANEL.paddingBottom + QUESTION_POPUP.feedbackBottomOffset
+      );
     }
   }
 
@@ -1594,7 +1870,7 @@ export class EndlessRunnerGame {
     this._ctx.fillStyle = '#FFFFFF';
     this._ctx.textAlign = 'center';
     this._ctx.textBaseline = 'middle';
-    this._ctx.font = font(34, 'bold');
+    this._ctx.font = font(34);
     this._ctx.fillText(title, width / 2, height / 2 - s(18));
 
     this._ctx.font = font(18);
