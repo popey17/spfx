@@ -4,6 +4,7 @@ const characterUrl: string = require('./assets/img_character.png');
 const coinUrl: string = require('./assets/img_coin.png');
 const shieldUrl: string = require('./assets/img_shield.png');
 const menuBgUrl: string = require('./assets/img_menuBg.png');
+const speechBubbleUrl: string = require('./assets/img_Bubble.png');
 const coinSoundUrl: string = require('./assets/sound/coin.mp3');
 const crushSoundUrl: string = require('./assets/sound/crush.mp3');
 const gameMusic01Url: string = require('./assets/sound/gameMusic01.mp3');
@@ -60,11 +61,13 @@ interface LoadedAssets {
   coin: HTMLImageElement;
   shield: HTMLImageElement;
   menuBackground: HTMLImageElement;
+  speechBubble: HTMLImageElement;
   obstacles: HTMLImageElement[];
   obstacleMeta: SpriteMeta[];
   characterMeta: SpriteMeta;
   coinMeta: SpriteMeta;
   shieldMeta: SpriteMeta;
+  speechBubbleMeta: SpriteMeta;
 }
 
 const DESIGN_WIDTH = 1920;
@@ -103,24 +106,26 @@ const WELCOME_MENU = {
   bestScoreFontSize: 10,
   bestScoreGap: 10,
 
-  startButtonWidth: 320,
+  startButtonWidth: 350,
   startButtonHeight: 100,
-  startButtonBottomOffset: 100,
-  startButtonFontSize: 16,
-  startButtonRadius: 8,
-  startButtonCornerInset: 6,
+  startButtonBottomOffset: 140,
+  startButtonFontSize: 20,
+  startButtonRadius: 0,
+  startButtonCornerInset: 0,
   startButtonCornerArm: 10,
 
-  arrowHintsBottomOffset: 56,
-  arrowHintsFontSize: 13,
+  arrowHintsBottomOffset: 110,
+  arrowHintsFontSize: 12,
   arrowKeySize: 28,
   arrowKeyGap: 8,
 
   mascotShipHeight: 150,
-  mascotShipBottomOffset: 5,
-  mascotShipLeftOffset: 18,
-  speechBubbleWidth: 100,
-  speechBubbleOffsetY: 52
+  mascotShipBottomOffset: 30,
+  mascotShipLeftOffset: -20,
+
+  speechBubbleOffsetX: 200,
+  speechBubbleOffsetY: 70,
+  speechBubbleWidth: 150
 };
 
 // =============================================================================
@@ -297,7 +302,8 @@ export class EndlessRunnerGame {
   private readonly _boundKeyUp: (event: KeyboardEvent) => void;
   private readonly _boundResize: () => void;
   private readonly _boundGameLoop: (timestamp: number) => void;
-  private readonly _boundMouseDown: (event: MouseEvent) => void;
+  private readonly _boundPointerDown: (event: PointerEvent) => void;
+  private readonly _boundClick: (event: MouseEvent) => void;
   private readonly _playerWidth: number;
   private _resizeObserver: ResizeObserver | undefined;
 
@@ -324,6 +330,7 @@ export class EndlessRunnerGame {
   private _backdropCanvas: HTMLCanvasElement | undefined;
   private _bestScore: number = 0;
   private _disposed: boolean = false;
+  private _lastCanvasPressAt: number = 0;
 
   constructor(target: HTMLElement) {
     this._bestScore = this._loadBestScore();
@@ -336,7 +343,8 @@ export class EndlessRunnerGame {
     this._boundKeyUp = this._onKeyUp.bind(this);
     this._boundResize = this._resizeCanvas.bind(this);
     this._boundGameLoop = this._gameLoop.bind(this);
-    this._boundMouseDown = this._onMouseDown.bind(this);
+    this._boundPointerDown = this._onPointerDown.bind(this);
+    this._boundClick = this._onClick.bind(this);
     this._music = this._createAudio(gameMusic01Url, MUSIC_VOLUME, true);
     this._coinSound = this._createAudio(coinSoundUrl, SFX_VOLUME, false);
     this._crushSound = this._createAudio(crushSoundUrl, SFX_VOLUME, false);
@@ -355,7 +363,7 @@ export class EndlessRunnerGame {
     this._viewport.style.cssText = 'position:relative;overflow:hidden;flex-shrink:0;';
 
     this._canvas = document.createElement('canvas');
-    this._canvas.style.cssText = 'display:block;width:100%;height:100%;cursor:default;';
+    this._canvas.style.cssText = 'display:block;width:100%;height:100%;cursor:default;touch-action:none;';
     this._canvas.setAttribute('tabindex', '0');
     this._canvas.setAttribute('role', 'application');
     this._canvas.setAttribute('aria-label', 'Follow the Path endless runner game');
@@ -378,7 +386,8 @@ export class EndlessRunnerGame {
     window.addEventListener('keydown', this._boundKeyDown);
     window.addEventListener('keyup', this._boundKeyUp);
     window.addEventListener('resize', this._boundResize);
-    this._canvas.addEventListener('mousedown', this._boundMouseDown);
+    this._canvas.addEventListener('pointerdown', this._boundPointerDown);
+    this._canvas.addEventListener('click', this._boundClick);
 
     if (typeof ResizeObserver !== 'undefined') {
       this._resizeObserver = new ResizeObserver(this._boundResize);
@@ -401,7 +410,8 @@ export class EndlessRunnerGame {
     window.removeEventListener('keydown', this._boundKeyDown);
     window.removeEventListener('keyup', this._boundKeyUp);
     window.removeEventListener('resize', this._boundResize);
-    this._canvas.removeEventListener('mousedown', this._boundMouseDown);
+    this._canvas.removeEventListener('pointerdown', this._boundPointerDown);
+    this._canvas.removeEventListener('click', this._boundClick);
     this._resizeObserver?.disconnect();
     this._stopMusic();
     this._restorePageLayout();
@@ -439,19 +449,22 @@ export class EndlessRunnerGame {
       this._loadImage(coinUrl),
       this._loadImage(shieldUrl),
       this._loadImage(menuBgUrl),
+      this._loadImage(speechBubbleUrl),
       Promise.all(obstacleUrls.map((url) => this._loadImage(url)))
-    ]).then(([background, character, coin, shield, menuBackground, obstacles]) => {
+    ]).then(([background, character, coin, shield, menuBackground, speechBubble, obstacles]) => {
       this._assets = {
         background,
         character,
         coin,
         shield,
         menuBackground,
+        speechBubble,
         obstacles,
         obstacleMeta: OBSTACLE_NATIVE,
         characterMeta: CHARACTER_SPRITE_NATIVE,
         coinMeta: { width: 172, height: 171 },
-        shieldMeta: { width: 172, height: 171 }
+        shieldMeta: { width: 172, height: 171 },
+        speechBubbleMeta: { width: 600, height: 321 }
       };
     });
   }
@@ -561,11 +574,11 @@ export class EndlessRunnerGame {
     this._clampPlayer();
   }
 
-  private _canvasPointFromEvent(event: MouseEvent): { x: number; y: number } {
+  private _canvasPointFromClient(clientX: number, clientY: number): { x: number; y: number } {
     const rect = this._canvas.getBoundingClientRect();
     return {
-      x: (event.clientX - rect.left) * (this._canvas.width / rect.width),
-      y: (event.clientY - rect.top) * (this._canvas.height / rect.height)
+      x: (clientX - rect.left) * (this._canvas.width / rect.width),
+      y: (clientY - rect.top) * (this._canvas.height / rect.height)
     };
   }
 
@@ -577,29 +590,37 @@ export class EndlessRunnerGame {
     return x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
   }
 
-  private _onMouseDown(event: MouseEvent): void {
-    const point = this._canvasPointFromEvent(event);
+  private _handleCanvasPress(clientX: number, clientY: number): boolean {
+    const now = performance.now();
+    if (now - this._lastCanvasPressAt < 300) {
+      return false;
+    }
+
+    const point = this._canvasPointFromClient(clientX, clientY);
 
     if (this._state === 'waiting') {
       if (this._isPointInRect(point.x, point.y, this._getStartButtonBounds())) {
+        this._lastCanvasPressAt = now;
         this._startGame();
+        return true;
       }
-      return;
+      return false;
     }
 
     if (this._state === 'question') {
       const question = this._getCurrentQuestion();
       for (let i = 0; i < question.options.length; i++) {
         if (this._isPointInRect(point.x, point.y, this._getAnswerButtonBounds(i))) {
+          this._lastCanvasPressAt = now;
           this._handleAnswer(i);
-          return;
+          return true;
         }
       }
-      return;
+      return false;
     }
 
     if (this._state !== 'playing' && this._state !== 'paused') {
-      return;
+      return false;
     }
 
     const pauseBounds = this._getPauseButtonBounds();
@@ -610,7 +631,23 @@ export class EndlessRunnerGame {
       point.y >= pauseBounds.y &&
       point.y <= pauseBounds.y + pauseBounds.size
     ) {
+      this._lastCanvasPressAt = now;
       this._togglePause();
+      return true;
+    }
+
+    return false;
+  }
+
+  private _onPointerDown(event: PointerEvent): void {
+    if (this._handleCanvasPress(event.clientX, event.clientY)) {
+      event.preventDefault();
+    }
+  }
+
+  private _onClick(event: MouseEvent): void {
+    if (this._handleCanvasPress(event.clientX, event.clientY)) {
+      event.preventDefault();
     }
   }
 
@@ -1090,8 +1127,10 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'waiting') {
+      this._canvas.style.cursor = 'pointer';
       this._drawWelcomeScreen();
     } else {
+      this._canvas.style.cursor = 'default';
       this._drawPlayer();
       this._drawObstacles();
       this._drawCoins();
@@ -1617,32 +1656,13 @@ export class EndlessRunnerGame {
   }
 
   private _drawSpeechBubble(x: number, y: number, width: number): void {
-    const height = s(58);
-    const tailHeight = s(10);
+    if (!this._assets) {
+      return;
+    }
 
-    this._roundRectPath(x, y, width, height, s(10));
-    this._ctx.fillStyle = '#1E88E5';
-    this._ctx.fill();
-
-    this._ctx.beginPath();
-    this._ctx.moveTo(x + s(24), y + height);
-    this._ctx.lineTo(x + s(36), y + height + tailHeight);
-    this._ctx.lineTo(x + s(48), y + height);
-    this._ctx.closePath();
-    this._ctx.fill();
-
-    this._ctx.font = font(11);
-    this._ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    this._ctx.textAlign = 'left';
-    this._ctx.textBaseline = 'top';
-    this._ctx.fillText('To be', x + s(12), y + s(10));
-
-    this._ctx.font = font(14);
-    this._ctx.fillText('ACCOUNTABLE', x + s(12), y + s(24));
-
-    this._ctx.font = font(10);
-    this._ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    this._ctx.fillText('Own your actions, understand your impact', x + s(12), y + s(42));
+    const aspect = this._assets.speechBubbleMeta.height / this._assets.speechBubbleMeta.width;
+    const height = Math.round(width * aspect);
+    this._ctx.drawImage(this._assets.speechBubble, x, y, width, height);
   }
 
   private _drawWelcomeMascot(): void {
@@ -1656,7 +1676,7 @@ export class EndlessRunnerGame {
     }
 
     const bubbleWidth = Math.min(s(WELCOME_MENU.speechBubbleWidth), DESIGN_WIDTH * 0.42);
-    const bubbleX = shipX + shipWidth - s(20);
+    const bubbleX = shipX - bubbleWidth + s(20) + s(WELCOME_MENU.speechBubbleOffsetX);
     const bubbleY = shipY - s(WELCOME_MENU.speechBubbleOffsetY);
     this._drawSpeechBubble(bubbleX, bubbleY, bubbleWidth);
   }
