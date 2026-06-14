@@ -84,7 +84,7 @@ const MENU_PANEL = {
   width: 1487,
   height: 874,
   paddingTop: 133,
-  paddingBottom: 160
+  paddingBottom: 99,
 };
 
 // =============================================================================
@@ -146,16 +146,23 @@ const QUESTION_POPUP = {
 
   horizontalPadding: 100,
   answerButtonGap: 24,
-  answerButtonHeight: 180,
-  answerButtonBottomOffset: 0,
+  answerButtonHeight: 200,
+  answerButtonBottomOffset: 30,
   answerButtonFontSize: 14,
-  answerButtonLineHeight: 30,
+  answerButtonLineHeight: 40,
   answerButtonRadius: 0,
   answerButtonCornerInset: 0,
   answerButtonCornerArm: 14,
+  answerButtonPaddingX: 80,
+  answerButtonHorizontalInset: 0
+};
 
-  feedbackFontSize: 14,
-  feedbackBottomOffset: -30
+// =============================================================================
+// MENU BACKDROP — blur + dim when welcome or question popup is shown
+// =============================================================================
+const MENU_BACKDROP = {
+  blurPx: 6,
+  overlayColor: 'rgba(0, 0, 0, 0.2)'
 };
 
 const font = menuFont;
@@ -308,13 +315,13 @@ export class EndlessRunnerGame {
   private _nextCoinAt: number = 0;
   private _nextShieldAt: number = 0;
   private _questionIndex: number = 0;
-  private _questionFeedback: string = '';
   private _selectedAnswerIndex: number = 0;
   private readonly _fullscreenLayout: boolean;
   private _assets: LoadedAssets | undefined;
   private readonly _music: HTMLAudioElement;
   private readonly _coinSound: HTMLAudioElement;
   private readonly _crushSound: HTMLAudioElement;
+  private _backdropCanvas: HTMLCanvasElement | undefined;
   private _bestScore: number = 0;
   private _disposed: boolean = false;
 
@@ -708,7 +715,6 @@ export class EndlessRunnerGame {
     this._coins = [];
     this._shields = [];
     this._questionIndex = 0;
-    this._questionFeedback = '';
     this._selectedAnswerIndex = 0;
     this._lastTimestamp = 0;
     this._scheduleSpawns(performance.now());
@@ -1014,7 +1020,6 @@ export class EndlessRunnerGame {
   private _showQuestion(): void {
     this._state = 'question';
     this._movement = 0;
-    this._questionFeedback = '';
     this._selectedAnswerIndex = 0;
     this._canvas.focus();
   }
@@ -1024,14 +1029,11 @@ export class EndlessRunnerGame {
 
     if (selectedIndex === question.correctIndex) {
       this._questionIndex = Math.min(this._questionIndex + 1, QUESTIONS.length - 1);
-      this._questionFeedback = '';
       this._state = 'playing';
       this._lastTimestamp = 0;
       this._canvas.focus();
       return;
     }
-
-    this._questionFeedback = 'Incorrect — try again';
   }
 
   private _createAudio(url: string, volume: number, loop: boolean): HTMLAudioElement {
@@ -1425,6 +1427,29 @@ export class EndlessRunnerGame {
     };
   }
 
+  private _drawMenuBackdrop(): void {
+    if (!this._backdropCanvas) {
+      this._backdropCanvas = document.createElement('canvas');
+      this._backdropCanvas.width = DESIGN_WIDTH;
+      this._backdropCanvas.height = DESIGN_HEIGHT;
+    }
+
+    const bufferCtx = this._backdropCanvas.getContext('2d');
+    if (!bufferCtx) {
+      return;
+    }
+
+    bufferCtx.drawImage(this._canvas, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+
+    this._ctx.save();
+    this._ctx.filter = 'blur(' + MENU_BACKDROP.blurPx + 'px)';
+    this._ctx.drawImage(this._backdropCanvas, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+    this._ctx.restore();
+
+    this._ctx.fillStyle = MENU_BACKDROP.overlayColor;
+    this._ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+  }
+
   private _drawMenuPanelBackground(panel: { x: number; y: number; width: number; height: number }): void {
     if (this._assets?.menuBackground) {
       this._ctx.drawImage(
@@ -1637,6 +1662,8 @@ export class EndlessRunnerGame {
   }
 
   private _drawWelcomeScreen(): void {
+    this._drawMenuBackdrop();
+
     const panel = this._getWelcomePanelBounds();
     const content = this._getMenuContentBounds(panel);
     const centerX = panel.x + panel.width / 2;
@@ -1698,11 +1725,13 @@ export class EndlessRunnerGame {
   private _getAnswerButtonBounds(index: number): { x: number; y: number; width: number; height: number } {
     const panel = this._getQuestionPanelBounds();
     const content = this._getMenuContentBounds(panel);
-    const availableWidth = content.width - QUESTION_POPUP.horizontalPadding * 2;
+    const sidePadding =
+      QUESTION_POPUP.horizontalPadding + QUESTION_POPUP.answerButtonHorizontalInset;
+    const availableWidth = content.width - sidePadding * 2;
     const buttonWidth = (availableWidth - QUESTION_POPUP.answerButtonGap) / 2;
     const buttonsTop =
       content.bottom - QUESTION_POPUP.answerButtonHeight - QUESTION_POPUP.answerButtonBottomOffset;
-    const startX = panel.x + QUESTION_POPUP.horizontalPadding;
+    const startX = panel.x + sidePadding;
 
     return {
       x: startX + index * (buttonWidth + QUESTION_POPUP.answerButtonGap),
@@ -1736,7 +1765,8 @@ export class EndlessRunnerGame {
     rect: { x: number; y: number; width: number; height: number },
     fontStyle: string,
     color: string,
-    lineHeight: number
+    lineHeight: number,
+    horizontalPadding: number = 24
   ): void {
     this._ctx.font = fontStyle;
     this._ctx.fillStyle = color;
@@ -1749,7 +1779,7 @@ export class EndlessRunnerGame {
 
     for (let i = 0; i < words.length; i++) {
       const testLine = line ? line + ' ' + words[i] : words[i];
-      if (this._ctx.measureText(testLine).width > rect.width - 24 && line) {
+      if (this._ctx.measureText(testLine).width > rect.width - horizontalPadding * 2 && line) {
         lines.push(line);
         line = words[i];
       } else {
@@ -1794,20 +1824,18 @@ export class EndlessRunnerGame {
       bounds,
       menuFont(QUESTION_POPUP.answerButtonFontSize),
       '#FFFFFF',
-      QUESTION_POPUP.answerButtonLineHeight
+      QUESTION_POPUP.answerButtonLineHeight,
+      QUESTION_POPUP.answerButtonPaddingX
     );
   }
 
   private _drawQuestionScreen(): void {
-    const width = DESIGN_WIDTH;
-    const height = DESIGN_HEIGHT;
     const panel = this._getQuestionPanelBounds();
     const content = this._getMenuContentBounds(panel);
     const centerX = panel.x + panel.width / 2;
     const question = this._getCurrentQuestion();
 
-    this._ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-    this._ctx.fillRect(0, HUD_HEIGHT, width, height - HUD_HEIGHT);
+    this._drawMenuBackdrop();
 
     this._drawMenuPanelBackground(panel);
 
@@ -1845,18 +1873,6 @@ export class EndlessRunnerGame {
         this._getAnswerButtonBounds(i),
         question.options[i],
         i === this._selectedAnswerIndex
-      );
-    }
-
-    if (this._questionFeedback) {
-      this._ctx.font = menuFont(QUESTION_POPUP.feedbackFontSize);
-      this._ctx.fillStyle = '#FF8A80';
-      this._ctx.textAlign = 'center';
-      this._ctx.textBaseline = 'top';
-      this._ctx.fillText(
-        this._questionFeedback,
-        centerX,
-        panel.y + panel.height - MENU_PANEL.paddingBottom + QUESTION_POPUP.feedbackBottomOffset
       );
     }
   }
