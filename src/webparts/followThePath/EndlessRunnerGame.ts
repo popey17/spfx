@@ -128,34 +128,34 @@ const WELCOME_MENU = {
 // All values are 1920×1080 design pixels unless marked (scaled)
 // =============================================================================
 const QUESTION_POPUP = {
-  shieldSize: 88,
-  shieldTopOffset: -36,
+  shieldSize: 280,
+  shieldTopOffset: -100,
 
-  badgeOffsetY: 133,
+  badgeOffsetY: 140,
   badgeFontSize: 18,
-  badgePaddingX: 48,
+  badgePaddingX: 60,
   badgeHeight: 60,
 
-  scenarioFontSize: 18,
-  scenarioGapBelowBadge: 36,
-  scenarioLineHeight: 30,
-  scenarioWidthInset: 120,
+  scenarioFontSize: 20,
+  scenarioGapBelowBadge: 60,
+  scenarioLineHeight: 50,
+  scenarioWidthInset: 300,
 
   promptFontSize: 20,
-  promptGapBelowScenario: 20,
+  promptGapBelowScenario: 60,
 
   horizontalPadding: 100,
   answerButtonGap: 24,
-  answerButtonHeight: 110,
-  answerButtonBottomOffset: 24,
+  answerButtonHeight: 180,
+  answerButtonBottomOffset: 0,
   answerButtonFontSize: 14,
-  answerButtonLineHeight: 22,
-  answerButtonRadius: 8,
-  answerButtonCornerInset: 8,
+  answerButtonLineHeight: 30,
+  answerButtonRadius: 0,
+  answerButtonCornerInset: 0,
   answerButtonCornerArm: 14,
 
   feedbackFontSize: 14,
-  feedbackBottomOffset: 16
+  feedbackBottomOffset: -30
 };
 
 const font = menuFont;
@@ -182,6 +182,7 @@ const MUSIC_VOLUME = 0.35;
 const SFX_VOLUME = 0.7;
 
 const SHIELD_SPAWN_INTERVAL_MS = 30000;
+const DEBUG_SPAWN_SHIELD_FIRST = true; // TODO: set false before release — first shield spawns immediately
 const SPAWN_RETRY_DELAY_MS = 200;
 const SPAWN_POSITION_ATTEMPTS = 16;
 const SPAWN_SEPARATION = s(12);
@@ -718,7 +719,7 @@ export class EndlessRunnerGame {
   private _scheduleSpawns(now: number): void {
     this._nextObstacleAt = now + this._randomBetween(800, 1800);
     this._nextCoinAt = now + this._randomBetween(500, 1200);
-    this._nextShieldAt = now + SHIELD_SPAWN_INTERVAL_MS;
+    this._nextShieldAt = DEBUG_SPAWN_SHIELD_FIRST ? now : now + SHIELD_SPAWN_INTERVAL_MS;
   }
 
   private _gameLoop(timestamp: number): void {
