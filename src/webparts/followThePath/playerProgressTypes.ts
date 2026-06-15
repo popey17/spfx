@@ -14,7 +14,7 @@ import { MAX_QUESTION_LEVEL, QUESTIONS_PER_LEVEL, TOTAL_QUESTION_COUNT, XP_PER_Q
  * | FTP Level                       | FollowThePath_Level              | Number           |
  * | FTP Level XP                    | FollowThePath_LevelXp            | Number           |
  * | FTP Earned Questions            | FollowThePath_EarnedQuestions    | Single line text |
- * | FTP Free Mode                   | FollowThePath_FreeModeUnlocked   | Yes/No           |
+ * | FTP Free Mode                   | FTPFreeMode                      | Yes/No           |
  *
  * Example columns for another game (add when that game is built):
  * | Quiz High Score                 | SecurityQuiz_HighScore           | Number           |
@@ -35,7 +35,7 @@ export const SHARED_PLAYER_LIST_CONFIG = {
     level: 'FollowThePath_Level',
     levelXp: 'FollowThePath_LevelXp',
     earnedQuestions: 'FollowThePath_EarnedQuestions',
-    freeModeUnlocked: 'FollowThePath_FreeModeUnlocked'
+    freeModeUnlocked: 'FTPFreeMode'
   }
 } as const;
 
@@ -211,7 +211,9 @@ export function readFollowThePathProgressFromListItem(
     earnedQuestionSlots,
     freeModeUnlocked:
       item[fields.freeModeUnlocked] === true ||
+      item[fields.freeModeUnlocked] === 1 ||
       item[fields.freeModeUnlocked] === 'true' ||
+      item[fields.freeModeUnlocked] === '1' ||
       earnedQuestionSlots.every((earned) => earned)
   };
 }

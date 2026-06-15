@@ -42,10 +42,12 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
           playerProgress
         });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (renderGeneration !== this._renderGeneration) {
           return;
         }
+
+        console.error('[FollowThePath] SharePoint progress load failed; using in-memory fallback.', error);
 
         const fallbackService = new InMemoryPlayerProgressService();
         this._game = new EndlessRunnerGame(this.domElement, {

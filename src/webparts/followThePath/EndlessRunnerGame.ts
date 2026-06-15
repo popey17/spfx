@@ -2,6 +2,7 @@
 const bgUrl: string = require('./assets/img_bg.png');
 const characterUrl: string = require('./assets/img_character.png');
 const coinUrl: string = require('./assets/img_coin.png');
+const pizzaUrl: string = require('./assets/img_pizza.png');
 const shieldUrl: string = require('./assets/img_shield.png');
 const menuBgUrl: string = require('./assets/img_menuBg.png');
 const speechBubbleUrl: string = require('./assets/img_Bubble.png');
@@ -30,6 +31,7 @@ import {
   type ShieldEntity,
   type ExplosionParticle,
   type ExplosionFlash,
+  type ConfettiParticle,
   type LoadedAssets,
   DESIGN_WIDTH,
   DESIGN_HEIGHT,
@@ -51,6 +53,7 @@ import {
   GOD_MODE_HOLO_RING,
   GOD_MODE_WIND,
   EXPLOSION,
+  CONFETTI,
   PAUSE_CONFIRM,
   MENU_BACKDROP,
   BUTTON_BG_NATIVE,
@@ -61,6 +64,7 @@ import {
   PLAYER_SPEED,
   SCROLL_SPEED,
   COIN_DISPLAY_SIZE,
+  PIZZA_DISPLAY_SCALE,
   SHIELD_DISPLAY_SIZE,
   MAX_LIVES,
   OBSTACLE_DISPLAY_SCALE,
@@ -92,6 +96,8 @@ import {
   CHEAT_CODE_GOD,
   CHEAT_CODE_RICH,
   CHEAT_CODE_TURBO,
+  CHEAT_CODE_PIZZA,
+  CHEAT_CODE_CLEAR,
   CHEAT_CODE_BUFFER_MAX,
   CHEAT_TURBO_MULTIPLIER,
   CHEAT_MAGNET_RADIUS,
@@ -151,6 +157,7 @@ export class EndlessRunnerGame {
   private _shields: ShieldEntity[] = [];
   private _explosionParticles: ExplosionParticle[] = [];
   private _explosionFlashes: ExplosionFlash[] = [];
+  private _confettiParticles: ConfettiParticle[] = [];
   private _nextObstacleAt: number = 0;
   private _nextCoinAt: number = 0;
   private _nextShieldAt: number = 0;
@@ -178,6 +185,8 @@ export class EndlessRunnerGame {
   private readonly _progressService: IPlayerProgressService | undefined;
   private _activeProgressLevel: number = 1;
   private _sessionXpByLevel: number[] = [0, 0, 0];
+  private _sessionProgressSaved: boolean = false;
+  private _sessionProgressSaving: boolean = false;
   private _disposed: boolean = false;
   private _lastCanvasPressAt: number = 0;
   private _showPauseMainMenuConfirm: boolean = false;
@@ -189,6 +198,8 @@ export class EndlessRunnerGame {
   private _cheatGodMode: boolean = false;
   private _cheatMagnetCoins: boolean = false;
   private _cheatTurbo: boolean = false;
+  private _cheatPizzaParty: boolean = false;
+  private _pendingPizzaConfetti: boolean = false;
   private _audioUnlocked: boolean = false;
 
   constructor(target: HTMLElement, options: EndlessRunnerGameOptions = {}) {
@@ -248,8 +259,8 @@ export class EndlessRunnerGame {
     this._playerY = this._playableCenterY();
     this._scheduleSpawns(0);
 
-    window.addEventListener('keydown', this._boundKeyDown);
-    window.addEventListener('keyup', this._boundKeyUp);
+    document.addEventListener('keydown', this._boundKeyDown, true);
+    document.addEventListener('keyup', this._boundKeyUp, true);
     window.addEventListener('resize', this._boundResize);
     this._canvas.addEventListener('pointerdown', this._boundPointerDown);
     this._canvas.addEventListener('click', this._boundClick);
@@ -275,8 +286,8 @@ export class EndlessRunnerGame {
     this._clearAnswerFeedbackTimer();
 
     window.cancelAnimationFrame(this._animationFrameId);
-    window.removeEventListener('keydown', this._boundKeyDown);
-    window.removeEventListener('keyup', this._boundKeyUp);
+    document.removeEventListener('keydown', this._boundKeyDown, true);
+    document.removeEventListener('keyup', this._boundKeyUp, true);
     window.removeEventListener('resize', this._boundResize);
     this._canvas.removeEventListener('pointerdown', this._boundPointerDown);
     this._canvas.removeEventListener('click', this._boundClick);
@@ -316,17 +327,19 @@ export class EndlessRunnerGame {
       this._loadImage(bgUrl),
       this._loadImage(characterUrl),
       this._loadImage(coinUrl),
+      this._loadImage(pizzaUrl),
       this._loadImage(shieldUrl),
       this._loadImage(menuBgUrl),
       this._loadImage(speechBubbleUrl),
       this._loadImage(buttonBgUrl),
       this._loadImage(buttonCornerUrl),
       Promise.all(obstacleUrls.map((url) => this._loadImage(url)))
-    ]).then(([background, character, coin, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, obstacles]) => {
+    ]).then(([background, character, coin, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, obstacles]) => {
       this._assets = {
         background,
         character,
         coin,
+        pizza,
         shield,
         menuBackground,
         speechBubble,
@@ -336,6 +349,7 @@ export class EndlessRunnerGame {
         obstacleMeta: OBSTACLE_NATIVE,
         characterMeta: CHARACTER_SPRITE_NATIVE,
         coinMeta: { width: 172, height: 171 },
+        pizzaMeta: { width: 172, height: 171 },
         shieldMeta: { width: 172, height: 171 },
         speechBubbleMeta: { width: 600, height: 321 }
       };
@@ -598,8 +612,28 @@ export class EndlessRunnerGame {
     }
   }
 
+  private _isEscapeKey(event: KeyboardEvent): boolean {
+    return event.key === 'Escape' || event.key === 'Esc' || event.code === 'Escape' || event.keyCode === 27;
+  }
+
   private _onKeyDown(event: KeyboardEvent): void {
     this._unlockAudio();
+
+    if (this._isEscapeKey(event)) {
+      if (this._state === 'paused') {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (this._showPauseMainMenuConfirm) {
+          this._showPauseMainMenuConfirm = false;
+        } else {
+          this._resumeFromPause();
+        }
+      }
+
+      return;
+    }
+
     if (PREVENT_DEFAULT_KEYS[event.key]) {
       event.preventDefault();
     }
@@ -607,9 +641,18 @@ export class EndlessRunnerGame {
     if (event.key === 'p' || event.key === 'P') {
       if (this._state === 'playing') {
         this._togglePause();
-      } else if (this._state === 'paused' && !this._showPauseMainMenuConfirm) {
-        this._resumeFromPause();
+        return;
       }
+
+      if (this._state === 'paused' && !this._showPauseMainMenuConfirm) {
+        this._handlePauseCheatInput(event);
+      }
+
+      return;
+    }
+
+    if (this._state === 'paused' && !this._showPauseMainMenuConfirm) {
+      this._handlePauseCheatInput(event);
       return;
     }
 
@@ -667,11 +710,6 @@ export class EndlessRunnerGame {
       return;
     }
 
-    if (this._state === 'paused' && !this._showPauseMainMenuConfirm) {
-      this._handlePauseCheatInput(event);
-      return;
-    }
-
     if (this._state !== 'playing') {
       return;
     }
@@ -696,6 +734,11 @@ export class EndlessRunnerGame {
 
     this._showPauseMainMenuConfirm = false;
     this._cheatCodeBuffer = '';
+
+    if (this._cheatPizzaParty) {
+      this._pendingPizzaConfetti = true;
+    }
+
     this._startCountdown();
   }
 
@@ -706,6 +749,7 @@ export class EndlessRunnerGame {
       this._showPauseMainMenuConfirm = false;
       this._cheatCodeBuffer = '';
       this._pauseGameMusic();
+      this._canvas.focus();
       return;
     }
 
@@ -715,6 +759,7 @@ export class EndlessRunnerGame {
   }
 
   private _goToMainMenu(): void {
+    this._finalizeGameSession();
     this._state = 'waiting';
     this._movement = 0;
     this._showPauseMainMenuConfirm = false;
@@ -724,6 +769,7 @@ export class EndlessRunnerGame {
     this._shields = [];
     this._explosionParticles = [];
     this._explosionFlashes = [];
+    this._confettiParticles = [];
     this._startMenuMusic();
     this._canvas.focus();
   }
@@ -740,6 +786,7 @@ export class EndlessRunnerGame {
     this._shields = [];
     this._explosionParticles = [];
     this._explosionFlashes = [];
+    this._confettiParticles = [];
     if (this._freeModeUnlocked) {
       this._currentLevel = 1;
       this._allQuestionsComplete = true;
@@ -754,6 +801,8 @@ export class EndlessRunnerGame {
     this._ghostModeEndsAt = 0;
     this._activeProgressLevel = this._getProgressLevel();
     this._sessionXpByLevel = [0, 0, 0];
+    this._sessionProgressSaved = false;
+    this._sessionProgressSaving = false;
     this._selectedAnswerIndex = 0;
     this._lastTimestamp = 0;
     this._spawnClockMs = 0;
@@ -801,6 +850,10 @@ export class EndlessRunnerGame {
 
     if (this._explosionParticles.length > 0 || this._explosionFlashes.length > 0) {
       this._updateExplosions(delta, timestamp);
+    }
+
+    if (this._confettiParticles.length > 0) {
+      this._updateConfetti(delta);
     }
 
     this._draw(timestamp);
@@ -902,6 +955,77 @@ export class EndlessRunnerGame {
     this._cheatGodMode = false;
     this._cheatMagnetCoins = false;
     this._cheatTurbo = false;
+    this._cheatPizzaParty = false;
+    this._pendingPizzaConfetti = false;
+    this._confettiParticles = [];
+  }
+
+  private _getCollectibleImage(): HTMLImageElement | undefined {
+    if (!this._assets) {
+      return undefined;
+    }
+
+    return this._cheatPizzaParty ? this._assets.pizza : this._assets.coin;
+  }
+
+  private _getCollectibleDrawRect(
+    slotX: number,
+    slotY: number,
+    slotSize: number
+  ): { x: number; y: number; width: number; height: number } {
+    if (!this._cheatPizzaParty) {
+      return { x: slotX, y: slotY, width: slotSize, height: slotSize };
+    }
+
+    const drawSize = Math.round(slotSize * PIZZA_DISPLAY_SCALE);
+    const offset = (slotSize - drawSize) / 2;
+
+    return {
+      x: slotX + offset,
+      y: slotY + offset,
+      width: drawSize,
+      height: drawSize
+    };
+  }
+
+  private _spawnConfetti(): void {
+    this._confettiParticles = [];
+
+    for (let i = 0; i < CONFETTI.particleCount; i++) {
+      const width = s(this._randomBetween(CONFETTI.minWidth, CONFETTI.maxWidth));
+      const height = s(this._randomBetween(CONFETTI.minHeight, CONFETTI.maxHeight));
+      const color = CONFETTI.colors[this._randomBetween(0, CONFETTI.colors.length - 1)];
+
+      this._confettiParticles.push({
+        x: Math.random() * DESIGN_WIDTH,
+        y: -height - Math.random() * DESIGN_HEIGHT * 0.35,
+        vx: this._randomBetween(-s(CONFETTI.swayAmplitude), s(CONFETTI.swayAmplitude)),
+        vy: s(this._randomBetween(CONFETTI.minFallSpeed, CONFETTI.maxFallSpeed)),
+        rotation: Math.random() * Math.PI * 2,
+        rotationSpeed: this._randomBetween(CONFETTI.minSwaySpeed, CONFETTI.maxSwaySpeed) * (Math.random() < 0.5 ? -1 : 1),
+        width,
+        height,
+        color,
+        lifeMs: CONFETTI.lifetimeMs,
+        maxLifeMs: CONFETTI.lifetimeMs
+      });
+    }
+  }
+
+  private _updateConfetti(delta: number): void {
+    const frameScale = delta / 16.67;
+
+    for (let i = this._confettiParticles.length - 1; i >= 0; i--) {
+      const particle = this._confettiParticles[i];
+      particle.x += particle.vx * frameScale;
+      particle.y += particle.vy * frameScale;
+      particle.rotation += particle.rotationSpeed * frameScale;
+      particle.lifeMs -= delta;
+
+      if (particle.lifeMs <= 0 || particle.y > DESIGN_HEIGHT + particle.height) {
+        this._confettiParticles.splice(i, 1);
+      }
+    }
   }
 
   private _handlePauseCheatInput(event: KeyboardEvent): void {
@@ -911,9 +1035,22 @@ export class EndlessRunnerGame {
 
     this._cheatCodeBuffer = (this._cheatCodeBuffer + event.key).slice(-CHEAT_CODE_BUFFER_MAX);
     const lower = this._cheatCodeBuffer.toLowerCase();
-    const godCode = CHEAT_CODE_GOD.toLowerCase();
-    const richCode = CHEAT_CODE_RICH.toLowerCase();
-    const turboCode = CHEAT_CODE_TURBO.toLowerCase();
+    const godCode = CHEAT_CODE_GOD;
+    const richCode = CHEAT_CODE_RICH;
+    const turboCode = CHEAT_CODE_TURBO;
+    const pizzaCode = CHEAT_CODE_PIZZA;
+    const clearCode = CHEAT_CODE_CLEAR;
+
+    if (lower.length >= clearCode.length && lower.slice(lower.length - clearCode.length) === clearCode) {
+      this._resetCheats();
+      return;
+    }
+
+    if (lower.length >= pizzaCode.length && lower.slice(lower.length - pizzaCode.length) === pizzaCode) {
+      this._cheatPizzaParty = true;
+      this._cheatCodeBuffer = '';
+      return;
+    }
 
     if (lower.length >= godCode.length && lower.slice(lower.length - godCode.length) === godCode) {
       this._cheatGodMode = true;
@@ -1306,6 +1443,11 @@ export class EndlessRunnerGame {
   }
 
   private _resumePlaying(): void {
+    if (this._pendingPizzaConfetti) {
+      this._pendingPizzaConfetti = false;
+      this._spawnConfetti();
+    }
+
     this._state = 'playing';
     this._lastTimestamp = 0;
     this._canvas.focus();
@@ -1520,6 +1662,7 @@ export class EndlessRunnerGame {
 
     if (this._assets) {
       this._drawBackground();
+      this._drawConfetti();
     } else {
       this._ctx.fillStyle = '#0a1628';
       this._ctx.fillRect(0, 0, width, height);
@@ -1567,6 +1710,21 @@ export class EndlessRunnerGame {
     this._ctx.textAlign = 'center';
     this._ctx.textBaseline = 'middle';
     this._ctx.fillText(String(this._getCountdownValue(timestamp)), DESIGN_WIDTH / 2, DESIGN_HEIGHT / 2);
+  }
+
+  private _drawConfetti(): void {
+    for (let i = 0; i < this._confettiParticles.length; i++) {
+      const particle = this._confettiParticles[i];
+      const alpha = Math.max(0, particle.lifeMs / particle.maxLifeMs);
+
+      this._ctx.save();
+      this._ctx.globalAlpha = alpha * 0.9;
+      this._ctx.translate(particle.x, particle.y);
+      this._ctx.rotate(particle.rotation);
+      this._ctx.fillStyle = particle.color;
+      this._ctx.fillRect(-particle.width / 2, -particle.height / 2, particle.width, particle.height);
+      this._ctx.restore();
+    }
   }
 
   private _drawBackground(): void {
@@ -1778,16 +1936,19 @@ export class EndlessRunnerGame {
   }
 
   private _drawCoins(): void {
+    const collectible = this._getCollectibleImage();
+
     for (let i = 0; i < this._coins.length; i++) {
       const coin = this._coins[i];
 
-      if (this._assets) {
+      if (collectible) {
+        const drawRect = this._getCollectibleDrawRect(coin.x, coin.y, coin.width);
         this._ctx.drawImage(
-          this._assets.coin,
-          coin.x,
-          coin.y,
-          coin.width,
-          coin.height
+          collectible,
+          drawRect.x,
+          drawRect.y,
+          drawRect.width,
+          drawRect.height
         );
       } else {
         this._ctx.fillStyle = '#FFEB3B';
@@ -1879,13 +2040,17 @@ export class EndlessRunnerGame {
     x += labelWidth + coinGap;
 
     if (this._assets) {
-      this._ctx.drawImage(
-        this._assets.coin,
-        x,
-        centerY - HUD_COIN_SIZE / 2,
-        HUD_COIN_SIZE,
-        HUD_COIN_SIZE
-      );
+      const collectible = this._getCollectibleImage();
+      if (collectible) {
+        const drawRect = this._getCollectibleDrawRect(x, centerY - HUD_COIN_SIZE / 2, HUD_COIN_SIZE);
+        this._ctx.drawImage(
+          collectible,
+          drawRect.x,
+          drawRect.y,
+          drawRect.width,
+          drawRect.height
+        );
+      }
     } else {
       this._ctx.fillStyle = '#FFEB3B';
       this._ctx.beginPath();
@@ -1975,12 +2140,12 @@ export class EndlessRunnerGame {
   }
 
   private _finalizeGameSession(): void {
-    const newHighScore = Math.max(this._bestScore, this._score);
-    this._bestScore = newHighScore;
-
-    if (!this._progressService) {
+    if (this._sessionProgressSaved || this._sessionProgressSaving || !this._progressService) {
       return;
     }
+
+    const newHighScore = Math.max(this._bestScore, this._score);
+    this._bestScore = newHighScore;
 
     const sessionXpGained =
       this._sessionXpByLevel[this._activeProgressLevel - 1] !== undefined
@@ -1990,6 +2155,8 @@ export class EndlessRunnerGame {
     for (let i = 0; i < this._sessionXpByLevel.length; i++) {
       xpGainedThisSession += this._sessionXpByLevel[i];
     }
+
+    this._sessionProgressSaving = true;
 
     this._progressService
       .saveAfterGame({
@@ -2001,8 +2168,14 @@ export class EndlessRunnerGame {
         earnedQuestionSlots: [...this._xpEarnedSlots],
         freeModeUnlocked: this._freeModeUnlocked
       })
-      .catch(() => {
-        // SharePoint save failures should not block the game-over screen.
+      .then(() => {
+        this._sessionProgressSaved = true;
+        this._sessionXpByLevel = [0, 0, 0];
+        this._sessionProgressSaving = false;
+      })
+      .catch((error: unknown) => {
+        this._sessionProgressSaving = false;
+        console.error('[FollowThePath] Failed to save player progress to SharePoint.', error);
       });
   }
 
@@ -2639,7 +2812,7 @@ export class EndlessRunnerGame {
 
     this._ctx.font = menuFont(PAUSE_MENU.subtitleFontSize);
     this._ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    this._ctx.fillText('PRESS P OR CLICK CONTINUE TO CONTINUE', centerX, subtitleY);
+    this._ctx.fillText('PRESS ESC TO CONTINUE', centerX, subtitleY);
 
     this._drawPauseMascot();
 

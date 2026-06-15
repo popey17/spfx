@@ -55,10 +55,25 @@ export interface ExplosionFlash {
   startedAt: number;
 }
 
+export interface ConfettiParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rotation: number;
+  rotationSpeed: number;
+  width: number;
+  height: number;
+  color: string;
+  lifeMs: number;
+  maxLifeMs: number;
+}
+
 export interface LoadedAssets {
   background: HTMLImageElement;
   character: HTMLImageElement;
   coin: HTMLImageElement;
+  pizza: HTMLImageElement;
   shield: HTMLImageElement;
   menuBackground: HTMLImageElement;
   speechBubble: HTMLImageElement;
@@ -68,6 +83,7 @@ export interface LoadedAssets {
   obstacleMeta: SpriteMeta[];
   characterMeta: SpriteMeta;
   coinMeta: SpriteMeta;
+  pizzaMeta: SpriteMeta;
   shieldMeta: SpriteMeta;
   speechBubbleMeta: SpriteMeta;
 }
@@ -279,6 +295,21 @@ export const EXPLOSION = {
   colors: ['#FFFFFF', '#FFEB3B', '#FFC107', '#FF9800', '#FF5722']
 };
 
+export const CONFETTI = {
+  particleCount: 110,
+  lifetimeMs: 3800,
+  minWidth: 8,
+  maxWidth: 18,
+  minHeight: 12,
+  maxHeight: 28,
+  minFallSpeed: 2.2,
+  maxFallSpeed: 6.8,
+  minSwaySpeed: 0.04,
+  maxSwaySpeed: 0.1,
+  swayAmplitude: 2.4,
+  colors: ['#FF5252', '#FFEB3B', '#69F0AE', '#40C4FF', '#E040FB', '#FF9800', '#FFFFFF']
+};
+
 // =============================================================================
 // PAUSE CONFIRM DIALOG — small overlay when leaving pause to main menu
 // =============================================================================
@@ -321,6 +352,7 @@ export const PLAYER_HEIGHT = s(84);
 export const PLAYER_SPEED = s(5);
 export const SCROLL_SPEED = s(4);
 export const COIN_DISPLAY_SIZE = s(104);
+export const PIZZA_DISPLAY_SCALE = 0.68;
 export const SHIELD_DISPLAY_SIZE = s(104);
 export const MAX_LIVES = 3;
 export const OBSTACLE_DISPLAY_SCALE = 1; // 2× previous ~50% native render size
@@ -355,9 +387,11 @@ export const OBSTACLE_PENALTY_SPAWN_MIN_MS = 500;
 export const OBSTACLE_PENALTY_SPAWN_MAX_MS = 1000;
 
 export const CHEAT_CODE_GOD = 'iamagod';
-export const CHEAT_CODE_RICH = 'Iamrich';
+export const CHEAT_CODE_RICH = 'iamrich';
 export const CHEAT_CODE_TURBO = 'turbo';
-export const CHEAT_CODE_BUFFER_MAX = 16;
+export const CHEAT_CODE_PIZZA = 'pizzaparty';
+export const CHEAT_CODE_CLEAR = 'ihavesinned';
+export const CHEAT_CODE_BUFFER_MAX = 20;
 export const CHEAT_TURBO_MULTIPLIER = 4;
 export const CHEAT_MAGNET_RADIUS = s(420);
 export const CHEAT_MAGNET_SPEED = s(22);
@@ -530,5 +564,6 @@ export const PREVENT_DEFAULT_KEYS: Record<string, boolean> = {
   S: true,
   ' ': true,
   p: true,
+  Escape: true,
   Enter: true
 };

@@ -144,7 +144,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     );
 
     if (!response.ok) {
-      throw new Error('Failed to load player progress from SharePoint list.');
+      throw new Error(await this._readSharePointError(response, 'Failed to load player progress from SharePoint list.'));
     }
 
     const payload = (await response.json()) as { value?: Array<Record<string, unknown>> };
@@ -163,11 +163,14 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
         'Content-type': 'application/json;odata=nometadata',
         'odata-version': ''
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        Title: String(body[shared.userEmail] || 'Player'),
+        ...body
+      })
     });
 
     if (!response.ok) {
-      throw new Error('Failed to create player progress list item.');
+      throw new Error(await this._readSharePointError(response, 'Failed to create player progress list item.'));
     }
 
     const created = (await response.json()) as Record<string, unknown>;
@@ -191,7 +194,22 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to update player progress list item.');
+      throw new Error(await this._readSharePointError(response, 'Failed to update player progress list item.'));
+    }
+  }
+
+  private async _readSharePointError(response: SPHttpClientResponse, fallback: string): Promise<string> {
+    try {
+      const text = await response.text();
+      if (!text) {
+        return `${fallback} (HTTP ${response.status})`;
+      }
+
+      const payload = JSON.parse(text) as { error?: { message?: { value?: string } } };
+      const message = payload.error?.message?.value;
+      return message ? `${fallback} ${message}` : `${fallback} ${text}`;
+    } catch {
+      return `${fallback} (HTTP ${response.status})`;
     }
   }
 
