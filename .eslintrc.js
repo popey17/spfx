@@ -294,6 +294,12 @@ module.exports = {
       }
     },
     {
+      files: ['src/webparts/followThePath/EndlessRunnerGame.ts'],
+      rules: {
+        'max-lines': 'off'
+      }
+    },
+    {
       // For unit tests, we can be a little bit less strict.  The settings below revise the
       // defaults specified in the extended configurations, as well as above.
       files: [

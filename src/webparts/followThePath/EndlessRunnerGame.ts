@@ -22,468 +22,79 @@ const obstacleUrls: string[] = [
   require('./assets/e.png')
 ];
 
-type GameState = 'waiting' | 'playing' | 'paused' | 'question' | 'gameover';
+import {
+  type GameState,
+  type Question,
+  type ObstacleEntity,
+  type CoinEntity,
+  type ShieldEntity,
+  type LoadedAssets,
+  DESIGN_WIDTH,
+  DESIGN_HEIGHT,
+  DESIGN_ASPECT,
+  s,
+  menuFont,
+  MENU_PANEL,
+  WELCOME_MENU,
+  GAME_OVER_MENU,
+  PAUSE_MENU,
+  QUESTION_POPUP,
+  ANSWER_FEEDBACK_MS,
+  ANSWER_CORRECT_TINT,
+  ANSWER_WRONG_TINT,
+  PAUSE_CONFIRM,
+  MENU_BACKDROP,
+  BUTTON_BG_NATIVE,
+  BUTTON_BG_SLICES,
+  font,
+  PLAYER_X,
+  PLAYER_HEIGHT,
+  PLAYER_SPEED,
+  SCROLL_SPEED,
+  COIN_DISPLAY_SIZE,
+  SHIELD_DISPLAY_SIZE,
+  MAX_LIVES,
+  OBSTACLE_DISPLAY_SCALE,
+  COLLISION_SCALE,
+  HUD_HEIGHT,
+  HUD_PADDING,
+  PAUSE_BTN_SIZE,
+  HEART_SIZE,
+  HUD_COIN_SIZE,
+  SHOW_OBSTACLE_HITBOXES,
+  BEST_SCORE_STORAGE_KEY,
+  WELCOME_ACCENT,
+  WELCOME_PANEL_FILL,
+  MUSIC_VOLUME,
+  SFX_VOLUME,
+  SHIELD_SPAWN_INTERVAL_MS,
+  DEBUG_SPAWN_SHIELD_FIRST,
+  SPAWN_RETRY_DELAY_MS,
+  SPAWN_POSITION_ATTEMPTS,
+  SPAWN_SEPARATION,
+  QUESTIONS_PER_LEVEL,
+  MAX_QUESTION_LEVEL,
+  OBSTACLE_SPAWN_MIN_MS,
+  OBSTACLE_SPAWN_MAX_MS,
+  OBSTACLE_PENALTY_SPAWN_MIN_MS,
+  OBSTACLE_PENALTY_SPAWN_MAX_MS,
+  CHEAT_CODE_GOD,
+  CHEAT_CODE_RICH,
+  CHEAT_CODE_TURBO,
+  CHEAT_CODE_BUFFER_MAX,
+  CHEAT_TURBO_MULTIPLIER,
+  CHEAT_MAGNET_RADIUS,
+  CHEAT_MAGNET_SPEED,
+  DUMMY_SHAREPOINT_BEST_SCORE,
+  QUESTIONS,
+  OBSTACLE_NATIVE,
+  CHARACTER_SPRITE_NATIVE,
+  CHARACTER_HITBOX_NATIVE,
+  CHARACTER_HITBOX_OFFSET_X_NATIVE,
+  MOVEMENT_KEYS,
+  PREVENT_DEFAULT_KEYS
+} from './gameConfig';
 
-interface Question {
-  level: number;
-  scenario: string;
-  prompt: string;
-  options: string[];
-  correctIndex: number;
-}
-
-interface SpriteMeta {
-  width: number;
-  height: number;
-}
-
-interface ObstacleEntity {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  speed: number;
-  spriteIndex: number;
-}
-
-interface CoinEntity {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  speed: number;
-}
-
-interface ShieldEntity {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  speed: number;
-}
-
-interface LoadedAssets {
-  background: HTMLImageElement;
-  character: HTMLImageElement;
-  coin: HTMLImageElement;
-  shield: HTMLImageElement;
-  menuBackground: HTMLImageElement;
-  speechBubble: HTMLImageElement;
-  buttonBackground: HTMLImageElement;
-  buttonCorner: HTMLImageElement;
-  obstacles: HTMLImageElement[];
-  obstacleMeta: SpriteMeta[];
-  characterMeta: SpriteMeta;
-  coinMeta: SpriteMeta;
-  shieldMeta: SpriteMeta;
-  speechBubbleMeta: SpriteMeta;
-}
-
-const DESIGN_WIDTH = 1920;
-const DESIGN_HEIGHT = 1080;
-const DESIGN_ASPECT = DESIGN_WIDTH / DESIGN_HEIGHT;
-const LEGACY_HEIGHT = 450;
-const SCALE = DESIGN_HEIGHT / LEGACY_HEIGHT;
-
-const s = (value: number): number => Math.round(value * SCALE);
-const FONT_FAMILY = 'Francois One';
-const menuFont = (size: number): string => s(size) + 'px "' + FONT_FAMILY + '", sans-serif';
-
-// =============================================================================
-// SHARED MENU PANEL — same frame for welcome + question (1920×1080 design px)
-// =============================================================================
-const MENU_PANEL = {
-  width: 1487,
-  height: 874,
-  paddingTop: 133,
-  paddingBottom: 99,
-};
-
-// =============================================================================
-// WELCOME MENU LAYOUT — adjust font sizes and element positions here
-// All values are 1920×1080 design pixels unless marked (scaled)
-// =============================================================================
-const WELCOME_MENU = {
-  titleFontSize: 30,
-  titleOffsetY: 0,
-
-  descriptionFontSize: 12,
-  descriptionOffsetY: 100,
-  descriptionLineHeight: 14,
-  descriptionWidthInset: 200,
-
-  bestScoreFontSize: 10,
-  bestScoreGap: 10,
-
-  startButtonWidth: 350,
-  startButtonHeight: 100,
-  startButtonBottomOffset: 140,
-  startButtonFontSize: 20,
-  startButtonRadius: 0,
-  startButtonCornerInset: 0,
-  startButtonCornerArm: 10,
-
-  arrowHintsBottomOffset: 110,
-  arrowHintsFontSize: 12,
-  arrowKeySize: 28,
-  arrowKeyGap: 8,
-
-  mascotShipHeight: 150,
-  mascotShipBottomOffset: 30,
-  mascotShipLeftOffset: -20,
-
-  speechBubbleOffsetX: 200,
-  speechBubbleOffsetY: 70,
-  speechBubbleWidth: 150
-};
-
-// =============================================================================
-// GAME OVER MENU LAYOUT — same panel style as welcome menu
-// =============================================================================
-const GAME_OVER_MENU = {
-  titleFontSize: 30,
-  titleOffsetY: 40,
-
-  scoreFontSize: 20,
-  bestScoreFontSize: 13,
-  scoreLineGap: 40,
-  scoreAboveButtonsOffset: 120,
-
-  buttonWidth: 280,
-  buttonHeight: 100,
-  buttonGap: 24,
-  buttonBottomOffset: 140,
-  buttonFontSize: 18,
-  buttonRadius: 0,
-  buttonCornerInset: 0,
-  buttonCornerArm: 10,
-
-  mascotShipHeight: 150,
-  mascotShipBottomOffset: 30,
-  mascotShipLeftOffset: -20,
-
-  speechBubbleOffsetX: 200,
-  speechBubbleOffsetY: 70,
-  speechBubbleWidth: 150
-};
-
-// =============================================================================
-// PAUSE MENU LAYOUT — same panel style as game over / welcome menu
-// =============================================================================
-const PAUSE_MENU = {
-  titleFontSize: 30,
-  titleOffsetY: 40,
-
-  subtitleFontSize: 14,
-  subtitleAboveButtonsOffset: 40,
-
-  buttonWidth: 280,
-  buttonHeight: 100,
-  buttonGap: 24,
-  buttonBottomOffset: 140,
-  buttonFontSize: 18,
-  buttonRadius: 0,
-  buttonCornerInset: 0,
-  buttonCornerArm: 10,
-
-  mascotShipHeight: 150,
-  mascotShipBottomOffset: 30,
-  mascotShipLeftOffset: -20,
-
-  speechBubbleOffsetX: 200,
-  speechBubbleOffsetY: 70,
-  speechBubbleWidth: 150
-};
-
-// =============================================================================
-// QUESTION POPUP LAYOUT — adjust font sizes and element positions here
-// All values are 1920×1080 design pixels unless marked (scaled)
-// =============================================================================
-const QUESTION_POPUP = {
-  shieldSize: 280,
-  shieldTopOffset: -100,
-
-  badgeOffsetY: 140,
-  badgeFontSize: 18,
-  badgePaddingX: 60,
-  badgeHeight: 60,
-
-  scenarioFontSize: 20,
-  scenarioGapBelowBadge: 60,
-  scenarioLineHeight: 50,
-  scenarioWidthInset: 300,
-
-  promptFontSize: 20,
-  promptGapBelowScenario: 60,
-
-  horizontalPadding: 100,
-  answerButtonGap: 24,
-  answerButtonHeight: 200,
-  answerButtonBottomOffset: 30,
-  answerButtonFontSize: 14,
-  answerButtonLineHeight: 40,
-  answerButtonRadius: 0,
-  answerButtonCornerInset: 0,
-  answerButtonCornerArm: 14,
-  answerButtonPaddingX: 80,
-  answerButtonHorizontalInset: 0
-};
-
-const ANSWER_FEEDBACK_MS = 600;
-const ANSWER_CORRECT_TINT = 'rgba(34, 197, 94, 0.55)';
-const ANSWER_WRONG_TINT = 'rgba(239, 68, 68, 0.55)';
-
-// =============================================================================
-// PAUSE CONFIRM DIALOG — small overlay when leaving pause to main menu
-// =============================================================================
-const PAUSE_CONFIRM = {
-  width: 520,
-  height: 280,
-  messageFontSize: 16,
-  messageOffsetY: 72,
-  buttonWidth: 180,
-  buttonHeight: 70,
-  buttonGap: 24,
-  buttonBottomOffset: 40,
-  buttonFontSize: 14,
-  buttonRadius: 0,
-  buttonCornerInset: 0,
-  buttonCornerArm: 10
-};
-
-// =============================================================================
-// MENU BACKDROP — blur + dim when welcome or question popup is shown
-// =============================================================================
-const MENU_BACKDROP = {
-  blurPx: 6,
-  overlayColor: 'rgba(0, 0, 0, 0.2)'
-};
-
-// Button bg nine-slice insets (source image pixels, 1206×341)
-const BUTTON_BG_NATIVE = { width: 1206, height: 341 };
-const BUTTON_BG_SLICES = {
-  left: 125,
-  right: 125,
-  top: 56,
-  bottom: 56
-};
-
-const font = menuFont;
-
-const PLAYER_X = 0;
-const PLAYER_HEIGHT = s(84);
-const PLAYER_SPEED = s(5);
-const SCROLL_SPEED = s(4);
-const COIN_DISPLAY_SIZE = s(104);
-const SHIELD_DISPLAY_SIZE = s(104);
-const MAX_LIVES = 3;
-const OBSTACLE_DISPLAY_SCALE = 1; // 2× previous ~50% native render size
-const COLLISION_SCALE = 0.72; // collision area is smaller than the rendered sprite
-const HUD_HEIGHT = s(52);
-const HUD_PADDING = s(16);
-const PAUSE_BTN_SIZE = s(40);
-const HEART_SIZE = s(22);
-const HUD_COIN_SIZE = s(24);
-const SHOW_OBSTACLE_HITBOXES = true;
-const BEST_SCORE_STORAGE_KEY = 'followThePathBestScore';
-const WELCOME_ACCENT = '#F57C00';
-const WELCOME_PANEL_FILL = 'rgba(28, 32, 42, 0.9)';
-const MUSIC_VOLUME = 0.35;
-const SFX_VOLUME = 0.7;
-
-const SHIELD_SPAWN_INTERVAL_MS = 30000;
-const DEBUG_SPAWN_SHIELD_FIRST = true; // TODO: set false before release — first shield spawns immediately
-const SPAWN_RETRY_DELAY_MS = 200;
-const SPAWN_POSITION_ATTEMPTS = 16;
-const SPAWN_SEPARATION = s(12);
-const QUESTIONS_PER_LEVEL = 4;
-const MAX_QUESTION_LEVEL = 3;
-const OBSTACLE_SPAWN_MIN_MS = 800;
-const OBSTACLE_SPAWN_MAX_MS = 1800;
-const OBSTACLE_PENALTY_SPAWN_MIN_MS = 500;
-const OBSTACLE_PENALTY_SPAWN_MAX_MS = 1000;
-
-const CHEAT_CODE_GOD = 'iamagod';
-const CHEAT_CODE_RICH = 'Iamrich';
-const CHEAT_CODE_TURBO = 'turbo';
-const CHEAT_CODE_BUFFER_MAX = 16;
-const CHEAT_TURBO_MULTIPLIER = 4;
-const CHEAT_MAGNET_RADIUS = s(420);
-const CHEAT_MAGNET_SPEED = s(22);
-
-// TODO: replace with SharePoint list lookup
-const DUMMY_SHAREPOINT_BEST_SCORE = 128;
-
-const QUESTIONS: Question[] = [
-  {
-    level: 1,
-    scenario:
-      'YOU NOTICE A CONFIGURATION CHANGE YOUR TEAMMATE MADE LAST WEEK MAY BE AFFECTING SYSTEM PERFORMANCE. NO INCIDENTS HAVE BEEN REPORTED YET.',
-    prompt: 'WHAT DO YOU DO?',
-    options: [
-      'Assume monitoring tools will catch serious problems',
-      'Flag it to your team and investigate the potential impact immediately'
-    ],
-    correctIndex: 1
-  },
-  {
-    level: 1,
-    scenario:
-      'A TEAMMATE URGENTLY NEEDS ACCESS TO COMPLETE A TASK AND ASKS TO BORROW YOUR PASSWORD TEMPORARILY.',
-    prompt: 'WHAT DO YOU DO?',
-    options: [
-      'Share it and change the password later',
-      'Decline and direct them to request proper access'
-    ],
-    correctIndex: 1
-  },
-  {
-    level: 1,
-    scenario:
-      'YOU REALISE YOU STILL HAVE PRODUCTION ACCESS FROM A PREVIOUS PROJECT, EVEN THOUGH YOU NO LONGER NEED IT.',
-    prompt: 'WHAT DO YOU DO?',
-    options: [
-      'Request for the access to be removed',
-      'Ignore it since you are not actively using it'
-    ],
-    correctIndex: 0
-  },
-  {
-    level: 1,
-    scenario:
-      'A TEAMMATE SUGGESTS TEMPORARILY BYPASSING A MONITORING ALERT BECAUSE IT HAS BEEN "TRIGGERING TOO OFTEN."',
-    prompt: 'WHAT DO YOU DO?',
-    options: [
-      'Investigate why the alert is triggering before making changes',
-      'Turn it off and rely on manual checks'
-    ],
-    correctIndex: 0
-  },
-  {
-    level: 2,
-    scenario:
-      'DURING DEPLOYMENT, A TEAMMATE SUGGESTS MAKING A QUICK PRODUCTION TWEAK OUTSIDE THE APPROVED CHANGE REQUEST SCOPE.',
-    prompt: 'WHAT SHOULD YOU DO?',
-    options: [
-      'Make the change and update documentation later',
-      'Reject the change and follow the approved process'
-    ],
-    correctIndex: 1
-  },
-  {
-    level: 2,
-    scenario: 'A TEAM WANTS TO DEPLOY MANUALLY BECAUSE THE CICD PIPELINE IS TEMPORARILY SLOW.',
-    prompt: 'WHAT SHOULD YOU DO?',
-    options: [
-      'Use CICD unless a formal exemption exists',
-      'Approve manual deployment to avoid delays'
-    ],
-    correctIndex: 0
-  },
-  {
-    level: 2,
-    scenario:
-      'A SECURITY SCAN IDENTIFIES VULNERABILITIES THAT THE TEAM BELIEVES ARE "LOW RISK."',
-    prompt: 'WHAT SHOULD YOU DO?',
-    options: [
-      'Ensure findings are assessed and remediated as required',
-      'Proceed without remediation'
-    ],
-    correctIndex: 0
-  },
-  {
-    level: 2,
-    scenario:
-      'YOU NOTICE RELEASE DOCUMENTATION DOES NOT CLEARLY MAP REQUIREMENTS TO CODE CHANGES AND TEST CASES.',
-    prompt: 'WHAT SHOULD YOU DO?',
-    options: [
-      'Rely on verbal explanations instead',
-      'Ensure proper traceability is completed before deployment'
-    ],
-    correctIndex: 1
-  },
-  {
-    level: 3,
-    scenario:
-      'A PRODUCTION ISSUE OCCURS AFTER A DEPLOYMENT INVOLVING MULTIPLE TEAMS. YOUR TEAM\'S COMPONENT MAY HAVE CONTRIBUTED, BUT ROOT CAUSE IS NOT CONFIRMED.',
-    prompt: 'WHAT SHOULD YOU DO?',
-    options: [
-      'Proactively raise potential impact and support investigation efforts',
-      'Wait until investigations confirm involvement'
-    ],
-    correctIndex: 0
-  },
-  {
-    level: 3,
-    scenario:
-      'A DEVELOPER PROPOSES REMOVING AN OLD VALIDATION STEP BECAUSE IT APPEARS REDUNDANT AND SLOWS PERFORMANCE.',
-    prompt: 'WHAT SHOULD YOU DO?',
-    options: [
-      'Assess whether it acts as a hidden safeguard elsewhere in the system',
-      'Remove it temporarily and monitor production'
-    ],
-    correctIndex: 0
-  },
-  {
-    level: 3,
-    scenario:
-      'YOU NOTICE EXPERIENCED TEAM MEMBERS REGULARLY BYPASS SMALL PROCESS STEPS BECAUSE "NOTHING HAS GONE WRONG BEFORE."',
-    prompt: 'WHAT SHOULD YOU DO?',
-    options: [
-      'Follow the process during audits',
-      'Raise concerns and continue following established processes'
-    ],
-    correctIndex: 1
-  },
-  {
-    level: 3,
-    scenario:
-      'A CRITICAL CUSTOMER ISSUE REQUIRES URGENT INTERVENTION, BUT PROPER ACCESS HAS NOT YET BEEN GRANTED.',
-    prompt: 'WHAT SHOULD YOU DO?',
-    options: [
-      'Suppress alerts until patterns become clearer',
-      'Escalate and investigate the abnormal behaviour'
-    ],
-    correctIndex: 1
-  }
-];
-
-const OBSTACLE_NATIVE: SpriteMeta[] = [
-  { width: 220, height: 161 },
-  { width: 194, height: 149 },
-  { width: 167, height: 136 },
-  { width: 184, height: 154 },
-  { width: 160, height: 189 }
-];
-
-const CHARACTER_SPRITE_NATIVE: SpriteMeta = { width: 393, height: 241 };
-const CHARACTER_HITBOX_NATIVE: SpriteMeta = { width: 317, height: 241 };
-// Rear thruster glow sits on the left of the sprite; hitbox covers the ship body only.
-const CHARACTER_HITBOX_OFFSET_X_NATIVE: number =
-  CHARACTER_SPRITE_NATIVE.width - CHARACTER_HITBOX_NATIVE.width;
-
-const MOVEMENT_KEYS: Record<string, number> = {
-  ArrowUp: -1,
-  ArrowDown: 1,
-  w: -1,
-  W: -1,
-  s: 1,
-  S: 1
-};
-
-const PREVENT_DEFAULT_KEYS: Record<string, boolean> = {
-  ArrowUp: true,
-  ArrowDown: true,
-  ArrowLeft: true,
-  ArrowRight: true,
-  w: true,
-  W: true,
-  s: true,
-  S: true,
-  ' ': true,
-  p: true,
-  Enter: true
-};
 
 /**
  * Self-contained 2D endless runner that mounts a canvas inside a target element.
