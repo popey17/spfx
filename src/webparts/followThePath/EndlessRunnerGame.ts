@@ -303,6 +303,12 @@ const OBSTACLE_SPAWN_MAX_MS = 1800;
 const OBSTACLE_PENALTY_SPAWN_MIN_MS = 500;
 const OBSTACLE_PENALTY_SPAWN_MAX_MS = 1000;
 
+const CHEAT_CODE_GOD = 'iamagod';
+const CHEAT_CODE_RICH = 'Iamrich';
+const CHEAT_CODE_BUFFER_MAX = 16;
+const CHEAT_MAGNET_RADIUS = s(420);
+const CHEAT_MAGNET_SPEED = s(22);
+
 // TODO: replace with SharePoint list lookup
 const DUMMY_SHAREPOINT_BEST_SCORE = 128;
 
@@ -536,6 +542,9 @@ export class EndlessRunnerGame {
   private _showPauseMainMenuConfirm: boolean = false;
   private _answerFeedback: { index: number; correct: boolean } | undefined;
   private _answerFeedbackTimerId: number | undefined;
+  private _cheatCodeBuffer: string = '';
+  private _cheatGodMode: boolean = false;
+  private _cheatMagnetCoins: boolean = false;
   private _audioUnlocked: boolean = false;
 
   constructor(target: HTMLElement, options: EndlessRunnerGameOptions = {}) {
@@ -1005,6 +1014,11 @@ export class EndlessRunnerGame {
       return;
     }
 
+    if (this._state === 'paused' && !this._showPauseMainMenuConfirm) {
+      this._handlePauseCheatInput(event);
+      return;
+    }
+
     if (this._state !== 'playing') {
       return;
     }
@@ -1029,6 +1043,7 @@ export class EndlessRunnerGame {
 
     this._extendSpawnTimers(performance.now() - this._pausedAt);
     this._showPauseMainMenuConfirm = false;
+    this._cheatCodeBuffer = '';
     this._state = 'playing';
     this._lastTimestamp = 0;
     this._resumeGameMusic();
@@ -1051,6 +1066,7 @@ export class EndlessRunnerGame {
       this._state = 'paused';
       this._movement = 0;
       this._showPauseMainMenuConfirm = false;
+      this._cheatCodeBuffer = '';
       this._pauseGameMusic();
       return;
     }
@@ -1064,6 +1080,7 @@ export class EndlessRunnerGame {
     this._state = 'waiting';
     this._movement = 0;
     this._showPauseMainMenuConfirm = false;
+    this._resetCheats();
     this._obstacles = [];
     this._coins = [];
     this._shields = [];
@@ -1077,6 +1094,7 @@ export class EndlessRunnerGame {
     this._lives = MAX_LIVES;
     this._playerY = this._playableCenterY();
     this._movement = 0;
+    this._resetCheats();
     this._obstacles = [];
     this._coins = [];
     this._shields = [];
@@ -1124,8 +1142,65 @@ export class EndlessRunnerGame {
 
     this._spawnEntities(timestamp);
     this._moveEntities(frameScale);
+    if (this._cheatMagnetCoins) {
+      this._attractCoins(frameScale);
+    }
     this._cleanupEntities();
     this._checkCollisions();
+  }
+
+  private _resetCheats(): void {
+    this._cheatCodeBuffer = '';
+    this._cheatGodMode = false;
+    this._cheatMagnetCoins = false;
+  }
+
+  private _handlePauseCheatInput(event: KeyboardEvent): void {
+    if (event.key.length !== 1 || !/^[a-zA-Z]$/.test(event.key)) {
+      return;
+    }
+
+    this._cheatCodeBuffer = (this._cheatCodeBuffer + event.key).slice(-CHEAT_CODE_BUFFER_MAX);
+    const lower = this._cheatCodeBuffer.toLowerCase();
+    const godCode = CHEAT_CODE_GOD.toLowerCase();
+    const richCode = CHEAT_CODE_RICH.toLowerCase();
+
+    if (lower.length >= godCode.length && lower.slice(lower.length - godCode.length) === godCode) {
+      this._cheatGodMode = true;
+      this._cheatCodeBuffer = '';
+      return;
+    }
+
+    if (lower.length >= richCode.length && lower.slice(lower.length - richCode.length) === richCode) {
+      this._cheatMagnetCoins = true;
+      this._cheatCodeBuffer = '';
+    }
+  }
+
+  private _attractCoins(frameScale: number): void {
+    const hitbox = this._getPlayerHitbox();
+    const playerCenterX = hitbox.x + hitbox.width / 2;
+    const playerCenterY = hitbox.y + hitbox.height / 2;
+    const magnetRadiusSq = CHEAT_MAGNET_RADIUS * CHEAT_MAGNET_RADIUS;
+    const speed = CHEAT_MAGNET_SPEED * frameScale;
+
+    for (let j = 0; j < this._coins.length; j++) {
+      const coin = this._coins[j];
+      const coinCenterX = coin.x + coin.width / 2;
+      const coinCenterY = coin.y + coin.height / 2;
+      const dx = playerCenterX - coinCenterX;
+      const dy = playerCenterY - coinCenterY;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq > magnetRadiusSq || distSq < 1) {
+        continue;
+      }
+
+      const dist = Math.sqrt(distSq);
+      const move = Math.min(speed, dist);
+      coin.x += (dx / dist) * move;
+      coin.y += (dy / dist) * move;
+    }
   }
 
   private _clampPlayer(): void {
@@ -1313,6 +1388,7 @@ export class EndlessRunnerGame {
       );
 
       if (
+        !this._cheatGodMode &&
         playerRight > obstacleHitbox.x &&
         playerLeft < obstacleHitbox.x + obstacleHitbox.width &&
         playerBottom > obstacleHitbox.y &&
