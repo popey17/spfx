@@ -509,6 +509,7 @@ export class EndlessRunnerGame {
   private _nextObstacleAt: number = 0;
   private _nextCoinAt: number = 0;
   private _nextShieldAt: number = 0;
+  private _pausedAt: number = 0;
   private _currentLevel: number = 1;
   private _activeQuestionInLevelIndex: number = 0;
   private _answeredInLevel: boolean[] = [false, false, false, false];
@@ -1011,6 +1012,7 @@ export class EndlessRunnerGame {
       return;
     }
 
+    this._extendSpawnTimers(performance.now() - this._pausedAt);
     this._showPauseMainMenuConfirm = false;
     this._state = 'playing';
     this._lastTimestamp = 0;
@@ -1018,8 +1020,19 @@ export class EndlessRunnerGame {
     this._canvas.focus();
   }
 
+  private _extendSpawnTimers(extraMs: number): void {
+    if (extraMs <= 0) {
+      return;
+    }
+
+    this._nextObstacleAt += extraMs;
+    this._nextCoinAt += extraMs;
+    this._nextShieldAt += extraMs;
+  }
+
   private _togglePause(): void {
     if (this._state === 'playing') {
+      this._pausedAt = performance.now();
       this._state = 'paused';
       this._movement = 0;
       this._showPauseMainMenuConfirm = false;
