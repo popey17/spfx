@@ -75,6 +75,7 @@ import {
   PAUSE_BTN_SIZE,
   HEART_SIZE,
   HUD_COIN_SIZE,
+  MOBILE_CONTROLS,
   SHOW_OBSTACLE_HITBOXES,
   WELCOME_ACCENT,
   WELCOME_PANEL_FILL,
@@ -141,6 +142,7 @@ export class EndlessRunnerGame {
   private readonly _boundResize: () => void;
   private readonly _boundGameLoop: (timestamp: number) => void;
   private readonly _boundPointerDown: (event: PointerEvent) => void;
+  private readonly _boundPointerUp: (event: PointerEvent) => void;
   private readonly _boundClick: (event: MouseEvent) => void;
   private readonly _boundUnlockAudio: () => void;
   private readonly _playerWidth: number;
@@ -153,6 +155,9 @@ export class EndlessRunnerGame {
   private _lives: number = MAX_LIVES;
   private _playerY: number = 0;
   private _movement: number = 0;
+  private _touchMovement: number = 0;
+  private _mobileControlPointerId: number | undefined;
+  private readonly _mobileControlsEnabled: boolean;
   private _obstacles: ObstacleEntity[] = [];
   private _coins: CoinEntity[] = [];
   private _shields: ShieldEntity[] = [];
@@ -210,12 +215,14 @@ export class EndlessRunnerGame {
     this._playerWidth = Math.round(
       PLAYER_HEIGHT * (CHARACTER_SPRITE_NATIVE.width / CHARACTER_SPRITE_NATIVE.height)
     );
+    this._mobileControlsEnabled = this._detectMobileControls();
 
     this._boundKeyDown = this._onKeyDown.bind(this);
     this._boundKeyUp = this._onKeyUp.bind(this);
     this._boundResize = this._resizeCanvas.bind(this);
     this._boundGameLoop = this._gameLoop.bind(this);
     this._boundPointerDown = this._onPointerDown.bind(this);
+    this._boundPointerUp = this._onPointerUp.bind(this);
     this._boundClick = this._onClick.bind(this);
     this._boundUnlockAudio = this._unlockAudio.bind(this);
     this._menuMusic = this._createAudio(menuMusicUrl, MUSIC_VOLUME, true);
@@ -264,6 +271,8 @@ export class EndlessRunnerGame {
     document.addEventListener('keyup', this._boundKeyUp, true);
     window.addEventListener('resize', this._boundResize);
     this._canvas.addEventListener('pointerdown', this._boundPointerDown);
+    this._canvas.addEventListener('pointerup', this._boundPointerUp);
+    this._canvas.addEventListener('pointercancel', this._boundPointerUp);
     this._canvas.addEventListener('click', this._boundClick);
 
     if (typeof ResizeObserver !== 'undefined') {
@@ -291,6 +300,8 @@ export class EndlessRunnerGame {
     document.removeEventListener('keyup', this._boundKeyUp, true);
     window.removeEventListener('resize', this._boundResize);
     this._canvas.removeEventListener('pointerdown', this._boundPointerDown);
+    this._canvas.removeEventListener('pointerup', this._boundPointerUp);
+    this._canvas.removeEventListener('pointercancel', this._boundPointerUp);
     this._canvas.removeEventListener('click', this._boundClick);
     this._removeAudioUnlockListeners();
     this._resizeObserver?.disconnect();
@@ -601,8 +612,20 @@ export class EndlessRunnerGame {
 
   private _onPointerDown(event: PointerEvent): void {
     this._unlockAudio();
+
+    if (this._handleMobileControlPointerDown(event)) {
+      event.preventDefault();
+      return;
+    }
+
     if (this._handleCanvasPress(event.clientX, event.clientY)) {
       event.preventDefault();
+    }
+  }
+
+  private _onPointerUp(event: PointerEvent): void {
+    if (this._mobileControlPointerId === event.pointerId) {
+      this._clearTouchMovement();
     }
   }
 
@@ -735,6 +758,8 @@ export class EndlessRunnerGame {
 
     this._showPauseMainMenuConfirm = false;
     this._cheatCodeBuffer = '';
+    this._movement = 0;
+    this._clearTouchMovement();
 
     if (this._cheatPizzaParty) {
       this._pendingPizzaConfetti = true;
@@ -747,6 +772,7 @@ export class EndlessRunnerGame {
     if (this._state === 'playing') {
       this._state = 'paused';
       this._movement = 0;
+      this._clearTouchMovement();
       this._showPauseMainMenuConfirm = false;
       this._cheatCodeBuffer = '';
       this._pauseGameMusic();
@@ -763,6 +789,7 @@ export class EndlessRunnerGame {
     this._finalizeGameSession();
     this._state = 'waiting';
     this._movement = 0;
+    this._clearTouchMovement();
     this._showPauseMainMenuConfirm = false;
     this._resetCheats();
     this._obstacles = [];
@@ -781,6 +808,7 @@ export class EndlessRunnerGame {
     this._lives = MAX_LIVES;
     this._playerY = this._playableCenterY();
     this._movement = 0;
+    this._clearTouchMovement();
     this._resetCheats();
     this._obstacles = [];
     this._coins = [];
@@ -868,6 +896,9 @@ export class EndlessRunnerGame {
 
     if (this._movement !== 0) {
       this._playerY += this._movement * PLAYER_SPEED * frameScale;
+      this._clampPlayer();
+    } else if (this._touchMovement !== 0) {
+      this._playerY += this._touchMovement * PLAYER_SPEED * frameScale;
       this._clampPlayer();
     }
 
@@ -1438,6 +1469,7 @@ export class EndlessRunnerGame {
   private _startCountdown(): void {
     this._state = 'countdown';
     this._movement = 0;
+    this._clearTouchMovement();
     this._lastTimestamp = 0;
     this._countdownEndsAt = performance.now() + COUNTDOWN_MS;
     this._canvas.focus();
@@ -1467,6 +1499,7 @@ export class EndlessRunnerGame {
     this._activeQuestionInLevelIndex = questionIndex;
     this._state = 'question';
     this._movement = 0;
+    this._clearTouchMovement();
     this._selectedAnswerIndex = 0;
     this._answerFeedback = undefined;
     this._clearAnswerFeedbackTimer();
@@ -1686,6 +1719,10 @@ export class EndlessRunnerGame {
       this._drawCoins();
       this._drawShields();
       this._drawHud();
+
+      if (this._state === 'playing' && this._mobileControlsEnabled) {
+        this._drawMobileControls();
+      }
     }
 
     if (this._state !== 'waiting') {
@@ -2084,6 +2121,120 @@ export class EndlessRunnerGame {
     x += HUD_COIN_SIZE + coinGap;
     this._ctx.fillStyle = '#FFFFFF';
     this._ctx.fillText(scoreValue, x, centerY);
+  }
+
+  private _detectMobileControls(): boolean {
+    if (!MOBILE_CONTROLS.enabled) {
+      return false;
+    }
+
+    if (MOBILE_CONTROLS.forceEnable) {
+      return true;
+    }
+
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    return (
+      window.matchMedia('(pointer: coarse)').matches ||
+      window.matchMedia('(hover: none)').matches ||
+      navigator.maxTouchPoints > 0
+    );
+  }
+
+  private _clearTouchMovement(): void {
+    this._touchMovement = 0;
+    this._mobileControlPointerId = undefined;
+  }
+
+  private _getMobileControlButtonSize(): number {
+    return s(MOBILE_CONTROLS.buttonSize);
+  }
+
+  private _getMobileDownButtonBounds(): { x: number; y: number; width: number; height: number } {
+    const size = this._getMobileControlButtonSize();
+    const x = s(MOBILE_CONTROLS.marginX);
+    const y = DESIGN_HEIGHT - s(MOBILE_CONTROLS.marginBottom) - size;
+
+    return { x, y, width: size, height: size };
+  }
+
+  private _getMobileUpButtonBounds(): { x: number; y: number; width: number; height: number } {
+    const down = this._getMobileDownButtonBounds();
+    const size = down.width;
+
+    return {
+      x: down.x,
+      y: down.y - size - s(MOBILE_CONTROLS.buttonGap),
+      width: size,
+      height: size
+    };
+  }
+
+  private _handleMobileControlPointerDown(event: PointerEvent): boolean {
+    if (!this._mobileControlsEnabled || this._state !== 'playing') {
+      return false;
+    }
+
+    const point = this._canvasPointFromClient(event.clientX, event.clientY);
+
+    if (this._isPointInRect(point.x, point.y, this._getMobileUpButtonBounds())) {
+      this._touchMovement = -1;
+      this._mobileControlPointerId = event.pointerId;
+      this._canvas.setPointerCapture(event.pointerId);
+      return true;
+    }
+
+    if (this._isPointInRect(point.x, point.y, this._getMobileDownButtonBounds())) {
+      this._touchMovement = 1;
+      this._mobileControlPointerId = event.pointerId;
+      this._canvas.setPointerCapture(event.pointerId);
+      return true;
+    }
+
+    return false;
+  }
+
+  private _drawMobileControls(): void {
+    this._drawMobileControlButton(this._getMobileUpButtonBounds(), 'up', this._touchMovement === -1);
+    this._drawMobileControlButton(this._getMobileDownButtonBounds(), 'down', this._touchMovement === 1);
+  }
+
+  private _drawMobileControlButton(
+    bounds: { x: number; y: number; width: number; height: number },
+    direction: 'up' | 'down',
+    pressed: boolean
+  ): void {
+    const radius = s(12);
+    const centerX = bounds.x + bounds.width / 2;
+    const centerY = bounds.y + bounds.height / 2;
+
+    this._roundRectPath(bounds.x, bounds.y, bounds.width, bounds.height, radius);
+    this._ctx.fillStyle = pressed ? MOBILE_CONTROLS.fillPressedColor : MOBILE_CONTROLS.fillColor;
+    this._ctx.fill();
+    this._ctx.strokeStyle = pressed ? MOBILE_CONTROLS.borderPressedColor : MOBILE_CONTROLS.borderColor;
+    this._ctx.lineWidth = s(2);
+    this._ctx.stroke();
+
+    const arrowHeight = bounds.height * 0.22;
+    const arrowHalfWidth = bounds.width * 0.2;
+
+    this._ctx.fillStyle = MOBILE_CONTROLS.arrowColor;
+    this._ctx.beginPath();
+
+    if (direction === 'up') {
+      this._ctx.moveTo(centerX, centerY - arrowHeight);
+      this._ctx.lineTo(centerX - arrowHalfWidth, centerY + arrowHeight * 0.35);
+      this._ctx.lineTo(centerX + arrowHalfWidth, centerY + arrowHeight * 0.35);
+    } else {
+      this._ctx.moveTo(centerX, centerY + arrowHeight);
+      this._ctx.lineTo(centerX - arrowHalfWidth, centerY - arrowHeight * 0.35);
+      this._ctx.lineTo(centerX + arrowHalfWidth, centerY - arrowHeight * 0.35);
+    }
+
+    this._ctx.closePath();
+    this._ctx.fill();
   }
 
   private _getPauseButtonBounds(): { x: number; y: number; size: number } {

@@ -369,6 +369,20 @@ export const HUD_PADDING = s(16);
 export const PAUSE_BTN_SIZE = s(40);
 export const HEART_SIZE = s(22);
 export const HUD_COIN_SIZE = s(24);
+/** On-screen up/down controls for touch devices (auto-detected). */
+export const MOBILE_CONTROLS = {
+  enabled: true,
+  forceEnable: false,
+  buttonSize: 88,
+  marginX: 28,
+  marginBottom: 36,
+  buttonGap: 14,
+  fillColor: 'rgba(28, 32, 42, 0.72)',
+  fillPressedColor: 'rgba(245, 124, 0, 0.88)',
+  borderColor: 'rgba(255, 255, 255, 0.55)',
+  borderPressedColor: '#FFB74D',
+  arrowColor: '#FFFFFF'
+};
 /** Debug collision outlines for the player (red) and obstacles (green). */
 export const SHOW_OBSTACLE_HITBOXES = true;
 export const XP_PER_QUESTION = 10;
