@@ -7,6 +7,7 @@ const menuBgUrl: string = require('./assets/img_menuBg.png');
 const speechBubbleUrl: string = require('./assets/img_Bubble.png');
 const coinSoundUrl: string = require('./assets/sound/coin.mp3');
 const crushSoundUrl: string = require('./assets/sound/crush.mp3');
+const alarmSoundUrl: string = require('./assets/sound/alarm.mp3');
 const gameMusic01Url: string = require('./assets/sound/gameMusic01.mp3');
 const obstacleUrls: string[] = [
   require('./assets/a.png'),
@@ -19,6 +20,7 @@ const obstacleUrls: string[] = [
 type GameState = 'waiting' | 'playing' | 'paused' | 'question' | 'gameover';
 
 interface Question {
+  level: number;
   scenario: string;
   prompt: string;
   options: string[];
@@ -198,11 +200,17 @@ const DEBUG_SPAWN_SHIELD_FIRST = true; // TODO: set false before release — fir
 const SPAWN_RETRY_DELAY_MS = 200;
 const SPAWN_POSITION_ATTEMPTS = 16;
 const SPAWN_SEPARATION = s(12);
+const QUESTIONS_PER_LEVEL = 4;
+const MAX_QUESTION_LEVEL = 3;
+const OBSTACLE_SPAWN_MIN_MS = 400;
+const OBSTACLE_SPAWN_PENALTY_REDUCTION_MS = 80;
+const OBSTACLE_EXTRA_SPAWN_PER_WRONG = 1;
 
 const QUESTIONS: Question[] = [
   {
+    level: 1,
     scenario:
-      'YOU NOTICE A CONFIGURATION CHANGE YOU MADE LAST WEEK MAY BE AFFECTING SYSTEM PERFORMANCE. NO INCIDENTS HAVE BEEN REPORTED YET.',
+      'YOU NOTICE A CONFIGURATION CHANGE YOUR TEAMMATE MADE LAST WEEK MAY BE AFFECTING SYSTEM PERFORMANCE. NO INCIDENTS HAVE BEEN REPORTED YET.',
     prompt: 'WHAT DO YOU DO?',
     options: [
       'Assume monitoring tools will catch serious problems',
@@ -211,42 +219,122 @@ const QUESTIONS: Question[] = [
     correctIndex: 1
   },
   {
+    level: 1,
     scenario:
-      'YOU SPOT AN ERROR IN A REPORT BEFORE IT IS SENT TO STAKEHOLDERS. NOBODY ELSE HAS NOTICED IT YET.',
+      'A TEAMMATE URGENTLY NEEDS ACCESS TO COMPLETE A TASK AND ASKS TO BORROW YOUR PASSWORD TEMPORARILY.',
     prompt: 'WHAT DO YOU DO?',
     options: [
-      'Leave it and hope nobody notices',
-      'Fix it and let the team know right away'
+      'Share it and change the password later',
+      'Decline and direct them to request proper access'
     ],
     correctIndex: 1
   },
   {
+    level: 1,
     scenario:
-      'A DEADLINE IS AT RISK BECAUSE OF A TASK YOU OWN. THE TEAM IS COUNTING ON YOU TO DELIVER ON TIME.',
+      'YOU REALISE YOU STILL HAVE PRODUCTION ACCESS FROM A PREVIOUS PROJECT, EVEN THOUGH YOU NO LONGER NEED IT.',
     prompt: 'WHAT DO YOU DO?',
     options: [
-      'Stay quiet and try to catch up alone',
-      'Escalate early and propose a recovery plan'
+      'Request for the access to be removed',
+      'Ignore it since you are not actively using it'
+    ],
+    correctIndex: 0
+  },
+  {
+    level: 1,
+    scenario:
+      'A TEAMMATE SUGGESTS TEMPORARILY BYPASSING A MONITORING ALERT BECAUSE IT HAS BEEN "TRIGGERING TOO OFTEN."',
+    prompt: 'WHAT DO YOU DO?',
+    options: [
+      'Investigate why the alert is triggering before making changes',
+      'Turn it off and rely on manual checks'
+    ],
+    correctIndex: 0
+  },
+  {
+    level: 2,
+    scenario:
+      'DURING DEPLOYMENT, A TEAMMATE SUGGESTS MAKING A QUICK PRODUCTION TWEAK OUTSIDE THE APPROVED CHANGE REQUEST SCOPE.',
+    prompt: 'WHAT SHOULD YOU DO?',
+    options: [
+      'Make the change and update documentation later',
+      'Reject the change and follow the approved process'
     ],
     correctIndex: 1
   },
   {
-    scenario:
-      "YOU COMMITTED TO AN ACTION IN LAST WEEK'S MEETING BUT A BLOCKER IS STOPPING YOU FROM PROGRESSING.",
-    prompt: 'WHAT DO YOU DO?',
+    level: 2,
+    scenario: 'A TEAM WANTS TO DEPLOY MANUALLY BECAUSE THE CICD PIPELINE IS TEMPORARILY SLOW.',
+    prompt: 'WHAT SHOULD YOU DO?',
     options: [
-      'Wait until the next meeting to mention it',
-      'Follow up on your commitment and communicate the blocker'
+      'Use CICD unless a formal exemption exists',
+      'Approve manual deployment to avoid delays'
+    ],
+    correctIndex: 0
+  },
+  {
+    level: 2,
+    scenario:
+      'A SECURITY SCAN IDENTIFIES VULNERABILITIES THAT THE TEAM BELIEVES ARE "LOW RISK."',
+    prompt: 'WHAT SHOULD YOU DO?',
+    options: [
+      'Ensure findings are assessed and remediated as required',
+      'Proceed without remediation'
+    ],
+    correctIndex: 0
+  },
+  {
+    level: 2,
+    scenario:
+      'YOU NOTICE RELEASE DOCUMENTATION DOES NOT CLEARLY MAP REQUIREMENTS TO CODE CHANGES AND TEST CASES.',
+    prompt: 'WHAT SHOULD YOU DO?',
+    options: [
+      'Rely on verbal explanations instead',
+      'Ensure proper traceability is completed before deployment'
     ],
     correctIndex: 1
   },
   {
+    level: 3,
     scenario:
-      'A PROJECT SETBACK JUST HAPPENED AND THE TEAM IS LOOKING FOR A WAY FORWARD.',
-    prompt: 'WHAT DO YOU DO?',
+      'A PRODUCTION ISSUE OCCURS AFTER A DEPLOYMENT INVOLVING MULTIPLE TEAMS. YOUR TEAM\'S COMPONENT MAY HAVE CONTRIBUTED, BUT ROOT CAUSE IS NOT CONFIRMED.',
+    prompt: 'WHAT SHOULD YOU DO?',
     options: [
-      'Focus on who caused the problem',
-      'Review what happened, learn, and agree next steps'
+      'Proactively raise potential impact and support investigation efforts',
+      'Wait until investigations confirm involvement'
+    ],
+    correctIndex: 0
+  },
+  {
+    level: 3,
+    scenario:
+      'A DEVELOPER PROPOSES REMOVING AN OLD VALIDATION STEP BECAUSE IT APPEARS REDUNDANT AND SLOWS PERFORMANCE.',
+    prompt: 'WHAT SHOULD YOU DO?',
+    options: [
+      'Assess whether it acts as a hidden safeguard elsewhere in the system',
+      'Remove it temporarily and monitor production'
+    ],
+    correctIndex: 0
+  },
+  {
+    level: 3,
+    scenario:
+      'YOU NOTICE EXPERIENCED TEAM MEMBERS REGULARLY BYPASS SMALL PROCESS STEPS BECAUSE "NOTHING HAS GONE WRONG BEFORE."',
+    prompt: 'WHAT SHOULD YOU DO?',
+    options: [
+      'Follow the process during audits',
+      'Raise concerns and continue following established processes'
+    ],
+    correctIndex: 1
+  },
+  {
+    level: 3,
+    scenario:
+      'A CRITICAL CUSTOMER ISSUE REQUIRES URGENT INTERVENTION, BUT PROPER ACCESS HAS NOT YET BEEN GRANTED.',
+    prompt: 'WHAT SHOULD YOU DO?',
+    options: [
+      'Suppress alerts until patterns become clearer',
+      'Escalate and investigate the abnormal behaviour'
     ],
     correctIndex: 1
   }
@@ -293,6 +381,10 @@ const PREVENT_DEFAULT_KEYS: Record<string, boolean> = {
  * Self-contained 2D endless runner that mounts a canvas inside a target element.
  * Designed for SPFx web parts: call `new EndlessRunnerGame(domElement)` from `render()`.
  */
+export interface EndlessRunnerGameOptions {
+  fullscreenLayout?: boolean;
+}
+
 export class EndlessRunnerGame {
   private readonly _container: HTMLDivElement;
   private readonly _viewport: HTMLDivElement;
@@ -320,21 +412,26 @@ export class EndlessRunnerGame {
   private _nextObstacleAt: number = 0;
   private _nextCoinAt: number = 0;
   private _nextShieldAt: number = 0;
-  private _questionIndex: number = 0;
+  private _currentLevel: number = 1;
+  private _activeQuestionInLevelIndex: number = 0;
+  private _answeredInLevel: boolean[] = [false, false, false, false];
+  private _allQuestionsComplete: boolean = false;
+  private _obstaclePenalty: number = 0;
   private _selectedAnswerIndex: number = 0;
   private readonly _fullscreenLayout: boolean;
   private _assets: LoadedAssets | undefined;
   private readonly _music: HTMLAudioElement;
   private readonly _coinSound: HTMLAudioElement;
   private readonly _crushSound: HTMLAudioElement;
+  private readonly _alarmSound: HTMLAudioElement;
   private _backdropCanvas: HTMLCanvasElement | undefined;
   private _bestScore: number = 0;
   private _disposed: boolean = false;
   private _lastCanvasPressAt: number = 0;
 
-  constructor(target: HTMLElement) {
+  constructor(target: HTMLElement, options: EndlessRunnerGameOptions = {}) {
     this._bestScore = this._loadBestScore();
-    this._fullscreenLayout = this._detectFullscreenLayout();
+    this._fullscreenLayout = options.fullscreenLayout === true;
     this._playerWidth = Math.round(
       PLAYER_HEIGHT * (CHARACTER_SPRITE_NATIVE.width / CHARACTER_SPRITE_NATIVE.height)
     );
@@ -348,6 +445,7 @@ export class EndlessRunnerGame {
     this._music = this._createAudio(gameMusic01Url, MUSIC_VOLUME, true);
     this._coinSound = this._createAudio(coinSoundUrl, SFX_VOLUME, false);
     this._crushSound = this._createAudio(crushSoundUrl, SFX_VOLUME, false);
+    this._alarmSound = this._createAudio(alarmSoundUrl, SFX_VOLUME, false);
     this._ensureGameFont();
 
     if (this._fullscreenLayout) {
@@ -469,17 +567,6 @@ export class EndlessRunnerGame {
     });
   }
 
-  private _detectFullscreenLayout(): boolean {
-    const path = window.location.pathname.toLowerCase();
-    const params = new URLSearchParams(window.location.search);
-
-    return (
-      path.indexOf('follow-the-path') !== -1 ||
-      params.get('env') === 'WebView' ||
-      params.get('layout') === 'fullscreen'
-    );
-  }
-
   private _applyFullscreenPageLayout(target: HTMLElement): void {
     target.style.cssText =
       'width:100%;min-height:0;padding:0;margin:0;overflow:visible;background:transparent;';
@@ -539,9 +626,19 @@ export class EndlessRunnerGame {
     }
 
     const parent = this._container.parentElement;
+    const width = parent?.clientWidth || 0;
+
+    if (width <= 0) {
+      const fallbackWidth = Math.min(window.innerWidth, 960);
+      return {
+        width: fallbackWidth,
+        height: fallbackWidth / DESIGN_ASPECT
+      };
+    }
+
     return {
-      width: parent?.clientWidth || window.innerWidth,
-      height: window.innerHeight
+      width,
+      height: width / DESIGN_ASPECT
     };
   }
 
@@ -609,6 +706,10 @@ export class EndlessRunnerGame {
 
     if (this._state === 'question') {
       const question = this._getCurrentQuestion();
+      if (!question) {
+        return false;
+      }
+
       for (let i = 0; i < question.options.length; i++) {
         if (this._isPointInRect(point.x, point.y, this._getAnswerButtonBounds(i))) {
           this._lastCanvasPressAt = now;
@@ -751,7 +852,11 @@ export class EndlessRunnerGame {
     this._obstacles = [];
     this._coins = [];
     this._shields = [];
-    this._questionIndex = 0;
+    this._currentLevel = 1;
+    this._activeQuestionInLevelIndex = 0;
+    this._answeredInLevel = [false, false, false, false];
+    this._allQuestionsComplete = false;
+    this._obstaclePenalty = 0;
     this._selectedAnswerIndex = 0;
     this._lastTimestamp = 0;
     this._scheduleSpawns(performance.now());
@@ -812,24 +917,8 @@ export class EndlessRunnerGame {
     }
 
     if (timestamp >= this._nextObstacleAt) {
-      const spriteIndex = this._randomBetween(0, this._assets.obstacles.length - 1);
-      const native = this._assets.obstacleMeta[spriteIndex];
-      const height = Math.round(native.height * OBSTACLE_DISPLAY_SCALE);
-      const width = Math.round(native.width * OBSTACLE_DISPLAY_SCALE);
-      const spawnX = DESIGN_WIDTH + width;
-      const maxY = this._playableTop() + this._playableHeight() - height;
-      const spawnY = this._findNonOverlappingY(spawnX, width, height, this._playableTop(), maxY);
-
-      if (spawnY !== undefined) {
-        this._obstacles.push({
-          x: spawnX,
-          y: spawnY,
-          width,
-          height,
-          speed: SCROLL_SPEED,
-          spriteIndex
-        });
-        this._nextObstacleAt = timestamp + this._randomBetween(800, 1800);
+      if (this._trySpawnObstacle()) {
+        this._nextObstacleAt = timestamp + this._getObstacleSpawnDelay();
       } else {
         this._nextObstacleAt = timestamp + SPAWN_RETRY_DELAY_MS;
       }
@@ -1049,12 +1138,114 @@ export class EndlessRunnerGame {
     }
   }
 
-  private _getCurrentQuestion(): Question {
-    const index = Math.min(this._questionIndex, QUESTIONS.length - 1);
-    return QUESTIONS[index];
+  private _getObstacleSpawnDelay(): number {
+    const penaltyReduction = this._obstaclePenalty * OBSTACLE_SPAWN_PENALTY_REDUCTION_MS;
+    const minDelay = Math.max(OBSTACLE_SPAWN_MIN_MS, 800 - penaltyReduction);
+    const maxDelay = Math.max(minDelay + 200, 1800 - penaltyReduction);
+    return this._randomBetween(minDelay, maxDelay);
+  }
+
+  private _trySpawnObstacle(): boolean {
+    if (!this._assets) {
+      return false;
+    }
+
+    const spriteIndex = this._randomBetween(0, this._assets.obstacles.length - 1);
+    const native = this._assets.obstacleMeta[spriteIndex];
+    const height = Math.round(native.height * OBSTACLE_DISPLAY_SCALE);
+    const width = Math.round(native.width * OBSTACLE_DISPLAY_SCALE);
+    const spawnX = DESIGN_WIDTH + width;
+    const maxY = this._playableTop() + this._playableHeight() - height;
+    const spawnY = this._findNonOverlappingY(spawnX, width, height, this._playableTop(), maxY);
+
+    if (spawnY === undefined) {
+      return false;
+    }
+
+    this._obstacles.push({
+      x: spawnX,
+      y: spawnY,
+      width,
+      height,
+      speed: SCROLL_SPEED,
+      spriteIndex
+    });
+    return true;
+  }
+
+  private _spawnBonusObstacles(count: number): void {
+    for (let i = 0; i < count; i++) {
+      this._trySpawnObstacle();
+    }
+  }
+
+  private _applyWrongAnswerPenalty(): void {
+    this._obstaclePenalty += 1;
+    this._spawnBonusObstacles(OBSTACLE_EXTRA_SPAWN_PER_WRONG);
+  }
+
+  private _pickUnansweredQuestionIndex(): number | undefined {
+    const unanswered: number[] = [];
+
+    for (let i = 0; i < QUESTIONS_PER_LEVEL; i++) {
+      if (!this._answeredInLevel[i]) {
+        unanswered.push(i);
+      }
+    }
+
+    if (unanswered.length === 0) {
+      return undefined;
+    }
+
+    return unanswered[this._randomBetween(0, unanswered.length - 1)];
+  }
+
+  private _getCurrentQuestion(): Question | undefined {
+    if (this._allQuestionsComplete) {
+      return undefined;
+    }
+
+    const globalIndex =
+      (this._currentLevel - 1) * QUESTIONS_PER_LEVEL + this._activeQuestionInLevelIndex;
+    return QUESTIONS[globalIndex];
+  }
+
+  private _isCurrentLevelComplete(): boolean {
+    return this._answeredInLevel.every((answered) => answered);
+  }
+
+  private _advanceToNextLevelIfComplete(): void {
+    if (!this._isCurrentLevelComplete()) {
+      return;
+    }
+
+    this._currentLevel += 1;
+
+    if (this._currentLevel > MAX_QUESTION_LEVEL) {
+      this._allQuestionsComplete = true;
+      return;
+    }
+
+    this._answeredInLevel = [false, false, false, false];
+  }
+
+  private _resumePlaying(): void {
+    this._state = 'playing';
+    this._lastTimestamp = 0;
+    this._canvas.focus();
   }
 
   private _showQuestion(): void {
+    if (this._allQuestionsComplete) {
+      return;
+    }
+
+    const questionIndex = this._pickUnansweredQuestionIndex();
+    if (questionIndex === undefined) {
+      return;
+    }
+
+    this._activeQuestionInLevelIndex = questionIndex;
     this._state = 'question';
     this._movement = 0;
     this._selectedAnswerIndex = 0;
@@ -1063,14 +1254,21 @@ export class EndlessRunnerGame {
 
   private _handleAnswer(selectedIndex: number): void {
     const question = this._getCurrentQuestion();
-
-    if (selectedIndex === question.correctIndex) {
-      this._questionIndex = Math.min(this._questionIndex + 1, QUESTIONS.length - 1);
-      this._state = 'playing';
-      this._lastTimestamp = 0;
-      this._canvas.focus();
+    if (!question) {
       return;
     }
+
+    if (selectedIndex === question.correctIndex) {
+      this._answeredInLevel[this._activeQuestionInLevelIndex] = true;
+      this._obstaclePenalty = 0;
+      this._advanceToNextLevelIfComplete();
+      this._resumePlaying();
+      return;
+    }
+
+    this._applyWrongAnswerPenalty();
+    this._playSfx(this._alarmSound);
+    this._resumePlaying();
   }
 
   private _createAudio(url: string, volume: number, loop: boolean): HTMLAudioElement {
@@ -1854,6 +2052,10 @@ export class EndlessRunnerGame {
     const content = this._getMenuContentBounds(panel);
     const centerX = panel.x + panel.width / 2;
     const question = this._getCurrentQuestion();
+
+    if (!question) {
+      return;
+    }
 
     this._drawMenuBackdrop();
 

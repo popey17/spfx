@@ -1,4 +1,4 @@
-import { Version } from '@microsoft/sp-core-library';
+import { DisplayMode, Version } from '@microsoft/sp-core-library';
 import {
   type IPropertyPaneConfiguration,
   PropertyPaneTextField
@@ -18,7 +18,24 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
 
   public render(): void {
     this._disposeGame();
-    this._game = new EndlessRunnerGame(this.domElement);
+    this._game = new EndlessRunnerGame(this.domElement, {
+      fullscreenLayout: this._isFullscreenLayout()
+    });
+  }
+
+  private _isFullscreenLayout(): boolean {
+    if (this.displayMode !== DisplayMode.Read) {
+      return false;
+    }
+
+    const path = window.location.pathname.toLowerCase();
+    const params = new URLSearchParams(window.location.search);
+
+    return (
+      path.indexOf('follow-the-path') !== -1 ||
+      params.get('env') === 'WebView' ||
+      params.get('layout') === 'fullscreen'
+    );
   }
 
   protected onDispose(): void {
