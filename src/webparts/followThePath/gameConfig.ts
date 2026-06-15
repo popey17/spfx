@@ -221,18 +221,18 @@ export const QUESTION_POPUP = {
   badgePaddingX: 60,
   badgeHeight: 60,
 
-  scenarioFontSize: 20,
-  scenarioGapBelowBadge: 60,
+  scenarioFontSize: 18,
+  scenarioGapBelowBadge: 45,
   scenarioLineHeight: 50,
   scenarioWidthInset: 300,
 
-  promptFontSize: 20,
-  promptGapBelowScenario: 60,
+  promptFontSize: 18,
+  promptGapBelowScenario: 45,
 
   horizontalPadding: 100,
   answerButtonGap: 24,
   answerButtonHeight: 200,
-  answerButtonBottomOffset: 30,
+  answerButtonBottomOffset: 15,
   answerButtonFontSize: 14,
   answerButtonLineHeight: 40,
   answerButtonRadius: 0,
@@ -370,7 +370,7 @@ export const PAUSE_BTN_SIZE = s(40);
 export const HEART_SIZE = s(22);
 export const HUD_COIN_SIZE = s(24);
 /** Debug collision outlines for the player (red) and obstacles (green). */
-export const SHOW_OBSTACLE_HITBOXES = false;
+export const SHOW_OBSTACLE_HITBOXES = true;
 export const XP_PER_QUESTION = 10;
 export const XP_PER_LEVEL = 40;
 export const WELCOME_ACCENT = '#F57C00';

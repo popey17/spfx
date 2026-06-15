@@ -1499,7 +1499,6 @@ export class EndlessRunnerGame {
       this._answeredInLevel[this._activeQuestionInLevelIndex] = true;
       this._awardXpForCorrectAnswer();
       this._obstaclePenalty = 0;
-      this._advanceToNextLevelIfComplete();
       this._playSfx(this._correctSound);
     } else {
       this._applyWrongAnswerPenalty();
@@ -1510,6 +1509,11 @@ export class EndlessRunnerGame {
     this._answerFeedbackTimerId = window.setTimeout(() => {
       this._answerFeedbackTimerId = undefined;
       this._answerFeedback = undefined;
+
+      if (correct) {
+        this._advanceToNextLevelIfComplete();
+      }
+
       this._startCountdown();
     }, ANSWER_FEEDBACK_MS);
   }
