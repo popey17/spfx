@@ -46,8 +46,10 @@ import {
   ANSWER_WRONG_TINT,
   COUNTDOWN_MS,
   COUNTDOWN,
-  HIT_GOD_MODE_MS,
-  GOD_MODE_PULSE,
+  HIT_GHOST_MODE_MS,
+  GHOST_MODE_PULSE,
+  GOD_MODE_HOLO_RING,
+  GOD_MODE_WIND,
   EXPLOSION,
   PAUSE_CONFIRM,
   MENU_BACKDROP,
@@ -69,7 +71,6 @@ import {
   HEART_SIZE,
   HUD_COIN_SIZE,
   SHOW_OBSTACLE_HITBOXES,
-  BEST_SCORE_STORAGE_KEY,
   WELCOME_ACCENT,
   WELCOME_PANEL_FILL,
   MUSIC_VOLUME,
@@ -95,7 +96,7 @@ import {
   CHEAT_TURBO_MULTIPLIER,
   CHEAT_MAGNET_RADIUS,
   CHEAT_MAGNET_SPEED,
-  DUMMY_SHAREPOINT_BEST_SCORE,
+  XP_PER_QUESTION,
   QUESTIONS,
   OBSTACLE_NATIVE,
   CHARACTER_SPRITE_NATIVE,
@@ -105,6 +106,13 @@ import {
   PREVENT_DEFAULT_KEYS
 } from './gameConfig';
 
+import type { IPlayerProgressService } from './IPlayerProgressService';
+import {
+  createEmptyEarnedQuestionSlots,
+  createDefaultPlayerProgress,
+  type PlayerProgressRecord
+} from './playerProgressTypes';
+
 
 /**
  * Self-contained 2D endless runner that mounts a canvas inside a target element.
@@ -112,6 +120,8 @@ import {
  */
 export interface EndlessRunnerGameOptions {
   fullscreenLayout?: boolean;
+  progressService?: IPlayerProgressService;
+  playerProgress?: PlayerProgressRecord;
 }
 
 export class EndlessRunnerGame {
@@ -163,13 +173,18 @@ export class EndlessRunnerGame {
   private readonly _gameOverSound: HTMLAudioElement;
   private _backdropCanvas: HTMLCanvasElement | undefined;
   private _bestScore: number = 0;
+  private _xpEarnedSlots: boolean[] = createEmptyEarnedQuestionSlots();
+  private _freeModeUnlocked: boolean = false;
+  private readonly _progressService: IPlayerProgressService | undefined;
+  private _activeProgressLevel: number = 1;
+  private _sessionXpByLevel: number[] = [0, 0, 0];
   private _disposed: boolean = false;
   private _lastCanvasPressAt: number = 0;
   private _showPauseMainMenuConfirm: boolean = false;
   private _answerFeedback: { index: number; correct: boolean } | undefined;
   private _answerFeedbackTimerId: number | undefined;
   private _countdownEndsAt: number = 0;
-  private _godModeEndsAt: number = 0;
+  private _ghostModeEndsAt: number = 0;
   private _cheatCodeBuffer: string = '';
   private _cheatGodMode: boolean = false;
   private _cheatMagnetCoins: boolean = false;
@@ -177,7 +192,8 @@ export class EndlessRunnerGame {
   private _audioUnlocked: boolean = false;
 
   constructor(target: HTMLElement, options: EndlessRunnerGameOptions = {}) {
-    this._bestScore = this._loadBestScore();
+    this._progressService = options.progressService;
+    this._applyPlayerProgress(options.playerProgress ?? createDefaultPlayerProgress());
     this._fullscreenLayout = options.fullscreenLayout === true;
     this._playerWidth = Math.round(
       PLAYER_HEIGHT * (CHARACTER_SPRITE_NATIVE.width / CHARACTER_SPRITE_NATIVE.height)
@@ -724,13 +740,20 @@ export class EndlessRunnerGame {
     this._shields = [];
     this._explosionParticles = [];
     this._explosionFlashes = [];
-    this._currentLevel = 1;
+    if (this._freeModeUnlocked) {
+      this._currentLevel = 1;
+      this._allQuestionsComplete = true;
+    } else {
+      this._currentLevel = this._getProgressLevel();
+      this._allQuestionsComplete = false;
+    }
     this._activeQuestionInLevelIndex = 0;
     this._answeredInLevel = [false, false, false, false];
-    this._allQuestionsComplete = false;
     this._obstaclePenalty = 0;
     this._gameSpeedMultiplier = GAME_SPEED_INITIAL;
-    this._godModeEndsAt = 0;
+    this._ghostModeEndsAt = 0;
+    this._activeProgressLevel = this._getProgressLevel();
+    this._sessionXpByLevel = [0, 0, 0];
     this._selectedAnswerIndex = 0;
     this._lastTimestamp = 0;
     this._spawnClockMs = 0;
@@ -862,12 +885,16 @@ export class EndlessRunnerGame {
     }
   }
 
-  private _isGodModeActive(timestamp: number): boolean {
-    return this._cheatGodMode || timestamp < this._godModeEndsAt;
+  private _isGhostModeActive(timestamp: number): boolean {
+    return timestamp < this._ghostModeEndsAt;
   }
 
-  private _activateHitGodMode(timestamp: number): void {
-    this._godModeEndsAt = timestamp + HIT_GOD_MODE_MS;
+  private _isCheatGodModeActive(): boolean {
+    return this._cheatGodMode;
+  }
+
+  private _activateGhostMode(timestamp: number): void {
+    this._ghostModeEndsAt = timestamp + HIT_GHOST_MODE_MS;
   }
 
   private _resetCheats(): void {
@@ -1106,7 +1133,8 @@ export class EndlessRunnerGame {
     const playerRight = hitbox.x + hitbox.width;
     const playerTop = hitbox.y;
     const playerBottom = hitbox.y + hitbox.height;
-    const godModeActive = this._isGodModeActive(timestamp);
+    const ghostModeActive = this._isGhostModeActive(timestamp);
+    const cheatGodModeActive = this._isCheatGodModeActive();
 
     for (let i = 0; i < this._obstacles.length; i++) {
       const obstacle = this._obstacles[i];
@@ -1123,21 +1151,25 @@ export class EndlessRunnerGame {
         playerBottom > obstacleHitbox.y &&
         playerTop < obstacleHitbox.y + obstacleHitbox.height
       ) {
+        if (ghostModeActive && !cheatGodModeActive) {
+          continue;
+        }
+
         this._obstacles.splice(i, 1);
         const impact = this._getCollisionCenter(hitbox, obstacleHitbox);
         this._spawnExplosion(impact.x, impact.y, timestamp);
 
-        if (godModeActive) {
+        if (cheatGodModeActive) {
           return;
         }
 
         this._playSfx(this._crushSound);
         this._lives--;
-        this._activateHitGodMode(timestamp);
+        this._activateGhostMode(timestamp);
 
         if (this._lives <= 0) {
           this._state = 'gameover';
-          this._saveBestScore();
+          this._finalizeGameSession();
           this._stopAllMusic();
           this._playSfx(this._gameOverSound);
         }
@@ -1322,6 +1354,7 @@ export class EndlessRunnerGame {
 
     if (correct) {
       this._answeredInLevel[this._activeQuestionInLevelIndex] = true;
+      this._awardXpForCorrectAnswer();
       this._obstaclePenalty = 0;
       this._advanceToNextLevelIfComplete();
       this._playSfx(this._correctSound);
@@ -1586,8 +1619,8 @@ export class EndlessRunnerGame {
     }
   }
 
-  private _getGodModePulseOpacity(timestamp: number): number {
-    const { minOpacity, maxOpacity, periodMs } = GOD_MODE_PULSE;
+  private _getGhostModePulseOpacity(timestamp: number): number {
+    const { minOpacity, maxOpacity, periodMs } = GHOST_MODE_PULSE;
     const midpoint = (minOpacity + maxOpacity) / 2;
     const amplitude = (maxOpacity - minOpacity) / 2;
     const phase = (timestamp / periodMs) * Math.PI * 2;
@@ -1595,12 +1628,90 @@ export class EndlessRunnerGame {
     return midpoint + amplitude * Math.sin(phase);
   }
 
-  private _drawPlayer(timestamp: number): void {
-    const godModeActive = this._isGodModeActive(timestamp);
+  private _drawGodModeHoloRing(): void {
+    const centerX = PLAYER_X + this._playerWidth / 2 + s(GOD_MODE_HOLO_RING.offsetX);
+    const centerY = this._playerY + s(GOD_MODE_HOLO_RING.offsetY);
+    const radiusX = s(GOD_MODE_HOLO_RING.radiusX);
+    const radiusY = s(GOD_MODE_HOLO_RING.radiusY);
 
-    if (godModeActive) {
+    this._ctx.save();
+    this._ctx.translate(centerX, centerY);
+    this._ctx.globalAlpha = GOD_MODE_HOLO_RING.opacity;
+
+    const gradient = this._ctx.createLinearGradient(-radiusX, 0, radiusX, 0);
+    gradient.addColorStop(0, 'rgba(255, 235, 59, 0.95)');
+    gradient.addColorStop(0.5, 'rgba(255, 193, 7, 0.9)');
+    gradient.addColorStop(1, 'rgba(255, 235, 59, 0.95)');
+
+    this._ctx.strokeStyle = gradient;
+    this._ctx.lineWidth = s(GOD_MODE_HOLO_RING.lineWidth);
+    this._ctx.beginPath();
+    this._ctx.ellipse(0, 0, radiusX, radiusY, 0, 0, Math.PI * 2);
+    this._ctx.stroke();
+
+    const innerRadiusX = radiusX * GOD_MODE_HOLO_RING.innerScale;
+    const innerRadiusY = radiusY * GOD_MODE_HOLO_RING.innerScale;
+    this._ctx.globalAlpha = GOD_MODE_HOLO_RING.innerOpacity;
+    this._ctx.beginPath();
+    this._ctx.ellipse(0, 0, innerRadiusX, innerRadiusY, 0, 0, Math.PI * 2);
+    this._ctx.stroke();
+    this._ctx.restore();
+  }
+
+  private _drawGodModeAngledWind(timestamp: number): void {
+    const centerX = PLAYER_X + this._playerWidth / 2;
+    const centerY = this._playerY + PLAYER_HEIGHT / 2;
+    const angle = GOD_MODE_WIND.angleRadians;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const streakLen = s(GOD_MODE_WIND.streakLength);
+    const halfLen = streakLen / 2;
+    const cycle = streakLen * 2;
+    const travel = (timestamp * GOD_MODE_WIND.speed) % cycle;
+
+    this._ctx.save();
+    this._ctx.lineCap = 'round';
+
+    for (let i = 0; i < GOD_MODE_WIND.streakCount; i++) {
+      const spreadX = s(GOD_MODE_WIND.spreadX);
+      const spreadY = s(GOD_MODE_WIND.spreadY);
+      const offsetX = ((i - (GOD_MODE_WIND.streakCount - 1) / 2) / GOD_MODE_WIND.streakCount) * spreadX;
+      const offsetY = ((i * 17) % GOD_MODE_WIND.streakCount / GOD_MODE_WIND.streakCount - 0.5) * spreadY;
+      const baseX = centerX + offsetX;
+      const baseY = centerY + offsetY;
+      const drift = ((travel + i * (cycle / GOD_MODE_WIND.streakCount)) % cycle) - halfLen;
+      const x1 = baseX + cos * (drift - halfLen);
+      const y1 = baseY + sin * (drift - halfLen);
+      const x2 = baseX + cos * (drift + halfLen);
+      const y2 = baseY + sin * (drift + halfLen);
+      const lineGradient = this._ctx.createLinearGradient(x1, y1, x2, y2);
+
+      lineGradient.addColorStop(0, GOD_MODE_WIND.colorFade);
+      lineGradient.addColorStop(0.5, GOD_MODE_WIND.color);
+      lineGradient.addColorStop(1, GOD_MODE_WIND.colorFade);
+
+      this._ctx.strokeStyle = lineGradient;
+      this._ctx.lineWidth = s(GOD_MODE_WIND.streakWidth);
+      this._ctx.beginPath();
+      this._ctx.moveTo(x1, y1);
+      this._ctx.lineTo(x2, y2);
+      this._ctx.stroke();
+    }
+
+    this._ctx.restore();
+  }
+
+  private _drawPlayer(timestamp: number): void {
+    const cheatGodModeActive = this._isCheatGodModeActive();
+    const ghostModeActive = this._isGhostModeActive(timestamp);
+
+    if (cheatGodModeActive) {
+      this._drawGodModeAngledWind(timestamp);
+    }
+
+    if (ghostModeActive) {
       this._ctx.save();
-      this._ctx.globalAlpha = this._getGodModePulseOpacity(timestamp);
+      this._ctx.globalAlpha = this._getGhostModePulseOpacity(timestamp);
     }
 
     if (this._assets) {
@@ -1616,8 +1727,12 @@ export class EndlessRunnerGame {
       this._ctx.fillRect(PLAYER_X, this._playerY, this._playerWidth, PLAYER_HEIGHT);
     }
 
-    if (godModeActive) {
+    if (ghostModeActive) {
       this._ctx.restore();
+    }
+
+    if (cheatGodModeActive) {
+      this._drawGodModeHoloRing();
     }
 
     const hitbox = this._getPlayerHitbox();
@@ -1845,34 +1960,89 @@ export class EndlessRunnerGame {
     ctx.restore();
   }
 
-  private _loadBestScore(): number {
-    try {
-      const stored = window.localStorage.getItem(BEST_SCORE_STORAGE_KEY);
-      if (!stored) {
-        return 0;
-      }
-      const parsed = parseInt(stored, 10);
-      return isNaN(parsed) ? 0 : parsed;
-    } catch {
-      return 0;
+  private _applyPlayerProgress(record: PlayerProgressRecord): void {
+    this._bestScore = record.highScore;
+    this._freeModeUnlocked = record.freeModeUnlocked;
+    this._xpEarnedSlots = createEmptyEarnedQuestionSlots();
+
+    for (let i = 0; i < record.earnedQuestionSlots.length && i < this._xpEarnedSlots.length; i++) {
+      this._xpEarnedSlots[i] = record.earnedQuestionSlots[i] === true;
+    }
+
+    if (!this._freeModeUnlocked && this._xpEarnedSlots.every((earned) => earned)) {
+      this._freeModeUnlocked = true;
     }
   }
 
-  private _saveBestScore(): void {
-    if (this._score <= this._bestScore) {
+  private _finalizeGameSession(): void {
+    const newHighScore = Math.max(this._bestScore, this._score);
+    this._bestScore = newHighScore;
+
+    if (!this._progressService) {
       return;
     }
 
-    this._bestScore = this._score;
-    try {
-      window.localStorage.setItem(BEST_SCORE_STORAGE_KEY, String(this._bestScore));
-    } catch {
-      // Ignore storage failures in locked-down SharePoint environments.
+    const sessionXpGained =
+      this._sessionXpByLevel[this._activeProgressLevel - 1] !== undefined
+        ? this._sessionXpByLevel[this._activeProgressLevel - 1]
+        : 0;
+    let xpGainedThisSession = 0;
+    for (let i = 0; i < this._sessionXpByLevel.length; i++) {
+      xpGainedThisSession += this._sessionXpByLevel[i];
     }
+
+    this._progressService
+      .saveAfterGame({
+        coinsCollected: this._score,
+        highScore: newHighScore,
+        level: this._getProgressLevel(),
+        xpGainedInLevel: sessionXpGained,
+        xpGainedThisSession,
+        earnedQuestionSlots: [...this._xpEarnedSlots],
+        freeModeUnlocked: this._freeModeUnlocked
+      })
+      .catch(() => {
+        // SharePoint save failures should not block the game-over screen.
+      });
   }
 
-  private _getSharePointBestScore(): number {
-    return DUMMY_SHAREPOINT_BEST_SCORE;
+  private _getGlobalQuestionIndex(level?: number, slotIndex?: number): number {
+    const questionLevel = level ?? this._currentLevel;
+    const questionSlot = slotIndex ?? this._activeQuestionInLevelIndex;
+    return (questionLevel - 1) * QUESTIONS_PER_LEVEL + questionSlot;
+  }
+
+  private _getProgressLevel(): number {
+    for (let level = 1; level <= MAX_QUESTION_LEVEL; level++) {
+      const start = (level - 1) * QUESTIONS_PER_LEVEL;
+
+      for (let q = 0; q < QUESTIONS_PER_LEVEL; q++) {
+        if (!this._xpEarnedSlots[start + q]) {
+          return level;
+        }
+      }
+    }
+
+    return MAX_QUESTION_LEVEL;
+  }
+
+  private _awardXpForCorrectAnswer(): void {
+    const globalIndex = this._getGlobalQuestionIndex();
+
+    if (this._xpEarnedSlots[globalIndex]) {
+      return;
+    }
+
+    this._xpEarnedSlots[globalIndex] = true;
+    const levelIndex = this._currentLevel - 1;
+    if (this._sessionXpByLevel[levelIndex] !== undefined) {
+      this._sessionXpByLevel[levelIndex] += XP_PER_QUESTION;
+    }
+
+    if (this._xpEarnedSlots.every((earned) => earned)) {
+      this._freeModeUnlocked = true;
+      this._allQuestionsComplete = true;
+    }
   }
 
   private _ensureGameFont(): void {
@@ -2324,8 +2494,21 @@ export class EndlessRunnerGame {
     this._ctx.textAlign = 'center';
     this._ctx.fillText('Best score: ' + this._bestScore, centerX, descriptionBottom + WELCOME_MENU.bestScoreGap);
 
+    if (this._freeModeUnlocked) {
+      this._ctx.fillStyle = WELCOME_ACCENT;
+      this._ctx.fillText(
+        'FREE MODE UNLOCKED',
+        centerX,
+        descriptionBottom + WELCOME_MENU.bestScoreGap + s(18)
+      );
+    }
+
     const button = this._getStartButtonBounds();
-    this._drawMenuButton(button, 'START GAME', WELCOME_MENU.startButtonFontSize);
+    this._drawMenuButton(
+      button,
+      this._freeModeUnlocked ? 'FREE PLAY' : 'START GAME',
+      WELCOME_MENU.startButtonFontSize
+    );
 
     this._drawArrowKeyHints(centerX, content.bottom - WELCOME_MENU.arrowHintsBottomOffset);
     this._drawWelcomeMascot(timestamp);
@@ -2340,11 +2523,6 @@ export class EndlessRunnerGame {
     if (this._assets) {
       this._ctx.drawImage(this._assets.character, shipX, shipY, shipWidth, shipHeight);
     }
-
-    const bubbleWidth = Math.min(s(GAME_OVER_MENU.speechBubbleWidth), DESIGN_WIDTH * 0.42);
-    const bubbleX = shipX - bubbleWidth + s(20) + s(GAME_OVER_MENU.speechBubbleOffsetX);
-    const bubbleY = shipY - s(GAME_OVER_MENU.speechBubbleOffsetY);
-    this._drawSpeechBubble(bubbleX, bubbleY, bubbleWidth);
   }
 
   private _drawGameOverScreen(): void {
@@ -2380,7 +2558,7 @@ export class EndlessRunnerGame {
 
     this._ctx.font = menuFont(GAME_OVER_MENU.bestScoreFontSize);
     this._ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-    this._ctx.fillText('Best score: ' + this._getSharePointBestScore(), centerX, bestScoreY);
+    this._ctx.fillText('Best score: ' + this._bestScore, centerX, bestScoreY);
 
     this._drawGameOverMascot();
   }
@@ -2435,11 +2613,6 @@ export class EndlessRunnerGame {
     if (this._assets) {
       this._ctx.drawImage(this._assets.character, shipX, shipY, shipWidth, shipHeight);
     }
-
-    const bubbleWidth = Math.min(s(PAUSE_MENU.speechBubbleWidth), DESIGN_WIDTH * 0.42);
-    const bubbleX = shipX - bubbleWidth + s(20) + s(PAUSE_MENU.speechBubbleOffsetX);
-    const bubbleY = shipY - s(PAUSE_MENU.speechBubbleOffsetY);
-    this._drawSpeechBubble(bubbleX, bubbleY, bubbleWidth);
   }
 
   private _drawPauseScreen(): void {

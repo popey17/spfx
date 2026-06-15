@@ -236,11 +236,34 @@ export const COUNTDOWN = {
   fontSize: 120
 };
 
-export const HIT_GOD_MODE_MS = 3000;
-export const GOD_MODE_PULSE = {
+export const HIT_GHOST_MODE_MS = 3000;
+export const GHOST_MODE_PULSE = {
   minOpacity: 0.5,
   maxOpacity: 0.8,
   periodMs: 600
+};
+
+export const GOD_MODE_HOLO_RING = {
+  offsetX: 18,
+  offsetY: -10,
+  radiusX: 30,
+  radiusY: 11,
+  lineWidth: 4,
+  innerScale: 0.72,
+  opacity: 0.92,
+  innerOpacity: 0.55
+};
+
+export const GOD_MODE_WIND = {
+  angleRadians: -0.42,
+  streakCount: 7,
+  streakLength: 30,
+  streakWidth: 2,
+  spreadX: 56,
+  spreadY: 76,
+  speed: 0.14,
+  color: 'rgba(0, 229, 255, 0.6)',
+  colorFade: 'rgba(124, 77, 255, 0.15)'
 };
 
 export const EXPLOSION = {
@@ -308,7 +331,8 @@ export const PAUSE_BTN_SIZE = s(40);
 export const HEART_SIZE = s(22);
 export const HUD_COIN_SIZE = s(24);
 export const SHOW_OBSTACLE_HITBOXES = true;
-export const BEST_SCORE_STORAGE_KEY = 'followThePathBestScore';
+export const XP_PER_QUESTION = 10;
+export const XP_PER_LEVEL = 40;
 export const WELCOME_ACCENT = '#F57C00';
 export const WELCOME_PANEL_FILL = 'rgba(28, 32, 42, 0.9)';
 export const MUSIC_VOLUME = 0.35;
@@ -324,6 +348,7 @@ export const SPAWN_POSITION_ATTEMPTS = 16;
 export const SPAWN_SEPARATION = s(12);
 export const QUESTIONS_PER_LEVEL = 4;
 export const MAX_QUESTION_LEVEL = 3;
+export const TOTAL_QUESTION_COUNT = QUESTIONS_PER_LEVEL * MAX_QUESTION_LEVEL;
 export const OBSTACLE_SPAWN_MIN_MS = 800;
 export const OBSTACLE_SPAWN_MAX_MS = 1800;
 export const OBSTACLE_PENALTY_SPAWN_MIN_MS = 500;
@@ -336,9 +361,6 @@ export const CHEAT_CODE_BUFFER_MAX = 16;
 export const CHEAT_TURBO_MULTIPLIER = 4;
 export const CHEAT_MAGNET_RADIUS = s(420);
 export const CHEAT_MAGNET_SPEED = s(22);
-
-// TODO: replace with SharePoint list lookup
-export const DUMMY_SHAREPOINT_BEST_SCORE = 128;
 
 export const QUESTIONS: Question[] = [
   {

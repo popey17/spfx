@@ -7,20 +7,53 @@ import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 
 import * as strings from 'FollowThePathWebPartStrings';
 import { EndlessRunnerGame } from './EndlessRunnerGame';
+import { InMemoryPlayerProgressService } from './InMemoryPlayerProgressService';
+import { createDefaultPlayerProgress } from './playerProgressTypes';
+import { SharePointPlayerProgressService } from './SharePointPlayerProgressService';
 
 export interface IFollowThePathWebPartProps {
   description: string;
+  /** Shared list used by all games — one row per user. Defaults to PlayerGameHub. */
+  sharedPlayerListTitle?: string;
 }
 
 export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowThePathWebPartProps> {
 
   private _game: EndlessRunnerGame | undefined;
+  private _renderGeneration: number = 0;
 
   public render(): void {
     this._disposeGame();
-    this._game = new EndlessRunnerGame(this.domElement, {
-      fullscreenLayout: this._isFullscreenLayout()
+    const renderGeneration = ++this._renderGeneration;
+    const progressService = new SharePointPlayerProgressService(this.context, {
+      listTitle: this.properties.sharedPlayerListTitle
     });
+
+    progressService
+      .loadForCurrentUser()
+      .then((playerProgress) => {
+        if (renderGeneration !== this._renderGeneration) {
+          return;
+        }
+
+        this._game = new EndlessRunnerGame(this.domElement, {
+          fullscreenLayout: this._isFullscreenLayout(),
+          progressService,
+          playerProgress
+        });
+      })
+      .catch(() => {
+        if (renderGeneration !== this._renderGeneration) {
+          return;
+        }
+
+        const fallbackService = new InMemoryPlayerProgressService();
+        this._game = new EndlessRunnerGame(this.domElement, {
+          fullscreenLayout: this._isFullscreenLayout(),
+          progressService: fallbackService,
+          playerProgress: createDefaultPlayerProgress()
+        });
+      });
   }
 
   private _isFullscreenLayout(): boolean {
@@ -66,6 +99,9 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
               groupFields: [
                 PropertyPaneTextField('description', {
                   label: strings.DescriptionFieldLabel
+                }),
+                PropertyPaneTextField('sharedPlayerListTitle', {
+                  label: 'Shared player list title (all games)'
                 })
               ]
             }
