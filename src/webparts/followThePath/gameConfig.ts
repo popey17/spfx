@@ -219,6 +219,13 @@ export const COUNTDOWN = {
   fontSize: 120
 };
 
+export const HIT_GOD_MODE_MS = 3000;
+export const GOD_MODE_PULSE = {
+  minOpacity: 0.5,
+  maxOpacity: 0.8,
+  periodMs: 600
+};
+
 // =============================================================================
 // PAUSE CONFIRM DIALOG — small overlay when leaving pause to main menu
 // =============================================================================

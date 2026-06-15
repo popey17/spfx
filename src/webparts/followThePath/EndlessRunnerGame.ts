@@ -44,6 +44,8 @@ import {
   ANSWER_WRONG_TINT,
   COUNTDOWN_MS,
   COUNTDOWN,
+  HIT_GOD_MODE_MS,
+  GOD_MODE_PULSE,
   PAUSE_CONFIRM,
   MENU_BACKDROP,
   BUTTON_BG_NATIVE,
@@ -162,6 +164,7 @@ export class EndlessRunnerGame {
   private _answerFeedback: { index: number; correct: boolean } | undefined;
   private _answerFeedbackTimerId: number | undefined;
   private _countdownEndsAt: number = 0;
+  private _godModeEndsAt: number = 0;
   private _cheatCodeBuffer: string = '';
   private _cheatGodMode: boolean = false;
   private _cheatMagnetCoins: boolean = false;
@@ -718,6 +721,7 @@ export class EndlessRunnerGame {
     this._allQuestionsComplete = false;
     this._obstaclePenalty = 0;
     this._gameSpeedMultiplier = GAME_SPEED_INITIAL;
+    this._godModeEndsAt = 0;
     this._selectedAnswerIndex = 0;
     this._lastTimestamp = 0;
     this._spawnClockMs = 0;
@@ -783,7 +787,15 @@ export class EndlessRunnerGame {
       this._attractCoins(frameScale);
     }
     this._cleanupEntities();
-    this._checkCollisions();
+    this._checkCollisions(timestamp);
+  }
+
+  private _isGodModeActive(timestamp: number): boolean {
+    return this._cheatGodMode || timestamp < this._godModeEndsAt;
+  }
+
+  private _activateHitGodMode(timestamp: number): void {
+    this._godModeEndsAt = timestamp + HIT_GOD_MODE_MS;
   }
 
   private _resetCheats(): void {
@@ -1016,12 +1028,13 @@ export class EndlessRunnerGame {
     return this._getCollisionRect(x, y, width, height);
   }
 
-  private _checkCollisions(): void {
+  private _checkCollisions(timestamp: number): void {
     const hitbox = this._getPlayerHitbox();
     const playerLeft = hitbox.x;
     const playerRight = hitbox.x + hitbox.width;
     const playerTop = hitbox.y;
     const playerBottom = hitbox.y + hitbox.height;
+    const godModeActive = this._isGodModeActive(timestamp);
 
     for (let i = 0; i < this._obstacles.length; i++) {
       const obstacle = this._obstacles[i];
@@ -1033,15 +1046,20 @@ export class EndlessRunnerGame {
       );
 
       if (
-        !this._cheatGodMode &&
         playerRight > obstacleHitbox.x &&
         playerLeft < obstacleHitbox.x + obstacleHitbox.width &&
         playerBottom > obstacleHitbox.y &&
         playerTop < obstacleHitbox.y + obstacleHitbox.height
       ) {
         this._obstacles.splice(i, 1);
+
+        if (godModeActive) {
+          return;
+        }
+
         this._playSfx(this._crushSound);
         this._lives--;
+        this._activateHitGodMode(timestamp);
 
         if (this._lives <= 0) {
           this._state = 'gameover';
@@ -1408,7 +1426,7 @@ export class EndlessRunnerGame {
       this._drawGameOverScreen();
     } else {
       this._canvas.style.cursor = this._state === 'paused' ? 'pointer' : 'default';
-      this._drawPlayer();
+      this._drawPlayer(timestamp);
       this._drawObstacles();
       this._drawCoins();
       this._drawShields();
@@ -1454,7 +1472,23 @@ export class EndlessRunnerGame {
     );
   }
 
-  private _drawPlayer(): void {
+  private _getGodModePulseOpacity(timestamp: number): number {
+    const { minOpacity, maxOpacity, periodMs } = GOD_MODE_PULSE;
+    const midpoint = (minOpacity + maxOpacity) / 2;
+    const amplitude = (maxOpacity - minOpacity) / 2;
+    const phase = (timestamp / periodMs) * Math.PI * 2;
+
+    return midpoint + amplitude * Math.sin(phase);
+  }
+
+  private _drawPlayer(timestamp: number): void {
+    const godModeActive = this._isGodModeActive(timestamp);
+
+    if (godModeActive) {
+      this._ctx.save();
+      this._ctx.globalAlpha = this._getGodModePulseOpacity(timestamp);
+    }
+
     if (this._assets) {
       this._ctx.drawImage(
         this._assets.character,
@@ -1466,6 +1500,10 @@ export class EndlessRunnerGame {
     } else {
       this._ctx.fillStyle = '#2196F3';
       this._ctx.fillRect(PLAYER_X, this._playerY, this._playerWidth, PLAYER_HEIGHT);
+    }
+
+    if (godModeActive) {
+      this._ctx.restore();
     }
 
     const hitbox = this._getPlayerHitbox();
