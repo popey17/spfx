@@ -5,7 +5,7 @@ const coinUrl: string = require('./assets/img_coin.png');
 const shieldUrl: string = require('./assets/img_shield.png');
 const menuBgUrl: string = require('./assets/img_menuBg.png');
 const speechBubbleUrl: string = require('./assets/img_Bubble.png');
-const buttonBgUrl: string = require('./assets/button Bg.png');
+const buttonBgUrl: string = require('./assets/buttonBg.png');
 const buttonCornerUrl: string = require('./assets/buttonCorner.png');
 const coinSoundUrl: string = require('./assets/sound/coin.mp3');
 const crushSoundUrl: string = require('./assets/sound/crush.mp3');
@@ -42,6 +42,8 @@ import {
   ANSWER_FEEDBACK_MS,
   ANSWER_CORRECT_TINT,
   ANSWER_WRONG_TINT,
+  COUNTDOWN_MS,
+  COUNTDOWN,
   PAUSE_CONFIRM,
   MENU_BACKDROP,
   BUTTON_BG_NATIVE,
@@ -68,6 +70,9 @@ import {
   MUSIC_VOLUME,
   SFX_VOLUME,
   SHIELD_SPAWN_INTERVAL_MS,
+  GAME_SPEED_INITIAL,
+  GAME_SPEED_INCREMENT,
+  GAME_SPEED_MAX,
   DEBUG_SPAWN_SHIELD_FIRST,
   SPAWN_RETRY_DELAY_MS,
   SPAWN_POSITION_ATTEMPTS,
@@ -133,6 +138,7 @@ export class EndlessRunnerGame {
   private _nextCoinAt: number = 0;
   private _nextShieldAt: number = 0;
   private _spawnClockMs: number = 0;
+  private _gameSpeedMultiplier: number = GAME_SPEED_INITIAL;
   private _currentLevel: number = 1;
   private _activeQuestionInLevelIndex: number = 0;
   private _answeredInLevel: boolean[] = [false, false, false, false];
@@ -155,6 +161,7 @@ export class EndlessRunnerGame {
   private _showPauseMainMenuConfirm: boolean = false;
   private _answerFeedback: { index: number; correct: boolean } | undefined;
   private _answerFeedbackTimerId: number | undefined;
+  private _countdownEndsAt: number = 0;
   private _cheatCodeBuffer: string = '';
   private _cheatGodMode: boolean = false;
   private _cheatMagnetCoins: boolean = false;
@@ -529,6 +536,10 @@ export class EndlessRunnerGame {
       return false;
     }
 
+    if (this._state === 'countdown') {
+      return false;
+    }
+
     if (this._state !== 'playing') {
       return false;
     }
@@ -575,6 +586,10 @@ export class EndlessRunnerGame {
       } else if (this._state === 'paused' && !this._showPauseMainMenuConfirm) {
         this._resumeFromPause();
       }
+      return;
+    }
+
+    if (this._state === 'countdown') {
       return;
     }
 
@@ -657,10 +672,7 @@ export class EndlessRunnerGame {
 
     this._showPauseMainMenuConfirm = false;
     this._cheatCodeBuffer = '';
-    this._state = 'playing';
-    this._lastTimestamp = 0;
-    this._resumeGameMusic();
-    this._canvas.focus();
+    this._startCountdown();
   }
 
   private _togglePause(): void {
@@ -705,6 +717,7 @@ export class EndlessRunnerGame {
     this._answeredInLevel = [false, false, false, false];
     this._allQuestionsComplete = false;
     this._obstaclePenalty = 0;
+    this._gameSpeedMultiplier = GAME_SPEED_INITIAL;
     this._selectedAnswerIndex = 0;
     this._lastTimestamp = 0;
     this._spawnClockMs = 0;
@@ -716,7 +729,23 @@ export class EndlessRunnerGame {
   private _scheduleSpawns(now: number): void {
     this._nextObstacleAt = now + this._randomBetween(OBSTACLE_SPAWN_MIN_MS, OBSTACLE_SPAWN_MAX_MS);
     this._nextCoinAt = now + this._randomBetween(500, 1200);
-    this._nextShieldAt = DEBUG_SPAWN_SHIELD_FIRST ? now : now + SHIELD_SPAWN_INTERVAL_MS;
+    this._nextShieldAt = DEBUG_SPAWN_SHIELD_FIRST ? now : now + this._getQuestionSpawnIntervalMs();
+  }
+
+  private _getEffectiveSpeedMultiplier(): number {
+    const cheatMultiplier = this._cheatTurbo ? CHEAT_TURBO_MULTIPLIER : 1;
+    return this._gameSpeedMultiplier * cheatMultiplier;
+  }
+
+  private _getQuestionSpawnIntervalMs(): number {
+    return SHIELD_SPAWN_INTERVAL_MS * this._gameSpeedMultiplier;
+  }
+
+  private _increaseGameSpeedAfterQuestion(): void {
+    this._gameSpeedMultiplier = Math.min(
+      GAME_SPEED_MAX,
+      this._gameSpeedMultiplier + GAME_SPEED_INCREMENT
+    );
   }
 
   private _gameLoop(timestamp: number): void {
@@ -729,14 +758,17 @@ export class EndlessRunnerGame {
 
     if (this._state === 'playing') {
       this._update(delta, timestamp);
+    } else if (this._state === 'countdown' && timestamp >= this._countdownEndsAt) {
+      this._resumePlaying();
+      this._resumeGameMusic();
     }
 
-    this._draw();
+    this._draw(timestamp);
     this._animationFrameId = window.requestAnimationFrame(this._boundGameLoop);
   }
 
   private _update(delta: number, timestamp: number): void {
-    const speedMultiplier = this._cheatTurbo ? CHEAT_TURBO_MULTIPLIER : 1;
+    const speedMultiplier = this._getEffectiveSpeedMultiplier();
     const frameScale = (delta / 16.67) * speedMultiplier;
     this._spawnClockMs += delta * speedMultiplier;
 
@@ -884,7 +916,7 @@ export class EndlessRunnerGame {
           height: SHIELD_DISPLAY_SIZE,
           speed: SCROLL_SPEED
         });
-        this._nextShieldAt = gameTimeMs + SHIELD_SPAWN_INTERVAL_MS;
+        this._nextShieldAt = gameTimeMs + this._getQuestionSpawnIntervalMs();
       } else {
         this._nextShieldAt = gameTimeMs + SPAWN_RETRY_DELAY_MS;
       }
@@ -1141,6 +1173,14 @@ export class EndlessRunnerGame {
     this._answeredInLevel = [false, false, false, false];
   }
 
+  private _startCountdown(): void {
+    this._state = 'countdown';
+    this._movement = 0;
+    this._lastTimestamp = 0;
+    this._countdownEndsAt = performance.now() + COUNTDOWN_MS;
+    this._canvas.focus();
+  }
+
   private _resumePlaying(): void {
     this._state = 'playing';
     this._lastTimestamp = 0;
@@ -1186,6 +1226,7 @@ export class EndlessRunnerGame {
     const correct = selectedIndex === question.correctIndex;
     this._selectedAnswerIndex = selectedIndex;
     this._answerFeedback = { index: selectedIndex, correct };
+    this._increaseGameSpeedAfterQuestion();
 
     if (correct) {
       this._answeredInLevel[this._activeQuestionInLevelIndex] = true;
@@ -1201,7 +1242,7 @@ export class EndlessRunnerGame {
     this._answerFeedbackTimerId = window.setTimeout(() => {
       this._answerFeedbackTimerId = undefined;
       this._answerFeedback = undefined;
-      this._resumePlaying();
+      this._startCountdown();
     }, ANSWER_FEEDBACK_MS);
   }
 
@@ -1348,7 +1389,7 @@ export class EndlessRunnerGame {
     this._stopGameMusic();
   }
 
-  private _draw(): void {
+  private _draw(timestamp: number = 0): void {
     const width = DESIGN_WIDTH;
     const height = DESIGN_HEIGHT;
 
@@ -1361,7 +1402,7 @@ export class EndlessRunnerGame {
 
     if (this._state === 'waiting') {
       this._canvas.style.cursor = 'pointer';
-      this._drawWelcomeScreen();
+      this._drawWelcomeScreen(timestamp);
     } else if (this._state === 'gameover') {
       this._canvas.style.cursor = 'pointer';
       this._drawGameOverScreen();
@@ -1378,7 +1419,25 @@ export class EndlessRunnerGame {
       this._drawPauseScreen();
     } else if (this._state === 'question') {
       this._drawQuestionScreen();
+    } else if (this._state === 'countdown') {
+      this._drawCountdownOverlay(timestamp);
     }
+  }
+
+  private _getCountdownValue(timestamp: number): number {
+    const remainingMs = this._countdownEndsAt - timestamp;
+    return Math.max(1, Math.ceil(remainingMs / 1000));
+  }
+
+  private _drawCountdownOverlay(timestamp: number): void {
+    this._ctx.fillStyle = COUNTDOWN.overlayColor;
+    this._ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+
+    this._ctx.fillStyle = '#FFFFFF';
+    this._ctx.font = menuFont(COUNTDOWN.fontSize);
+    this._ctx.textAlign = 'center';
+    this._ctx.textBaseline = 'middle';
+    this._ctx.fillText(String(this._getCountdownValue(timestamp)), DESIGN_WIDTH / 2, DESIGN_HEIGHT / 2);
   }
 
   private _drawBackground(): void {
@@ -2054,11 +2113,23 @@ export class EndlessRunnerGame {
     this._ctx.drawImage(this._assets.speechBubble, x, y, width, height);
   }
 
-  private _drawWelcomeMascot(): void {
+  private _getWelcomeMascotFloatOffset(timestamp: number): { x: number; y: number } {
+    const timeSeconds = timestamp / 1000;
+    const xPeriodSeconds = WELCOME_MENU.mascotFloatPeriodXMs / 1000;
+    const yPeriodSeconds = WELCOME_MENU.mascotFloatPeriodYMs / 1000;
+
+    return {
+      x: Math.sin((timeSeconds * Math.PI * 2) / xPeriodSeconds) * s(WELCOME_MENU.mascotFloatAmplitudeX),
+      y: Math.sin((timeSeconds * Math.PI * 2) / yPeriodSeconds + Math.PI / 3) * s(WELCOME_MENU.mascotFloatAmplitudeY)
+    };
+  }
+
+  private _drawWelcomeMascot(timestamp: number): void {
     const shipHeight = s(WELCOME_MENU.mascotShipHeight);
     const shipWidth = Math.round(shipHeight * (CHARACTER_SPRITE_NATIVE.width / CHARACTER_SPRITE_NATIVE.height));
-    const shipX = s(WELCOME_MENU.mascotShipLeftOffset);
-    const shipY = DESIGN_HEIGHT - shipHeight - s(WELCOME_MENU.mascotShipBottomOffset);
+    const floatOffset = this._getWelcomeMascotFloatOffset(timestamp);
+    const shipX = s(WELCOME_MENU.mascotShipLeftOffset) + floatOffset.x;
+    const shipY = DESIGN_HEIGHT - shipHeight - s(WELCOME_MENU.mascotShipBottomOffset) + floatOffset.y;
 
     if (this._assets) {
       this._ctx.drawImage(this._assets.character, shipX, shipY, shipWidth, shipHeight);
@@ -2070,7 +2141,7 @@ export class EndlessRunnerGame {
     this._drawSpeechBubble(bubbleX, bubbleY, bubbleWidth);
   }
 
-  private _drawWelcomeScreen(): void {
+  private _drawWelcomeScreen(timestamp: number): void {
     this._drawMenuBackdrop();
 
     const panel = this._getWelcomePanelBounds();
@@ -2105,7 +2176,7 @@ export class EndlessRunnerGame {
     this._drawMenuButton(button, 'START GAME', WELCOME_MENU.startButtonFontSize);
 
     this._drawArrowKeyHints(centerX, content.bottom - WELCOME_MENU.arrowHintsBottomOffset);
-    this._drawWelcomeMascot();
+    this._drawWelcomeMascot(timestamp);
   }
 
   private _drawGameOverMascot(): void {

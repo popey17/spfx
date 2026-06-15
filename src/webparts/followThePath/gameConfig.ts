@@ -1,4 +1,4 @@
-export type GameState = 'waiting' | 'playing' | 'paused' | 'question' | 'gameover';
+export type GameState = 'waiting' | 'playing' | 'paused' | 'question' | 'countdown' | 'gameover';
 
 export interface Question {
   level: number;
@@ -107,6 +107,10 @@ export const WELCOME_MENU = {
   mascotShipHeight: 150,
   mascotShipBottomOffset: 30,
   mascotShipLeftOffset: -20,
+  mascotFloatAmplitudeX: 14,
+  mascotFloatAmplitudeY: 12,
+  mascotFloatPeriodXMs: 3200,
+  mascotFloatPeriodYMs: 4100,
 
   speechBubbleOffsetX: 200,
   speechBubbleOffsetY: 70,
@@ -209,6 +213,12 @@ export const ANSWER_FEEDBACK_MS = 600;
 export const ANSWER_CORRECT_TINT = 'rgba(34, 197, 94, 0.55)';
 export const ANSWER_WRONG_TINT = 'rgba(239, 68, 68, 0.55)';
 
+export const COUNTDOWN_MS = 3000;
+export const COUNTDOWN = {
+  overlayColor: 'rgba(0, 0, 0, 0.35)',
+  fontSize: 120
+};
+
 // =============================================================================
 // PAUSE CONFIRM DIALOG — small overlay when leaving pause to main menu
 // =============================================================================
@@ -267,8 +277,11 @@ export const WELCOME_PANEL_FILL = 'rgba(28, 32, 42, 0.9)';
 export const MUSIC_VOLUME = 0.35;
 export const SFX_VOLUME = 0.7;
 
-export const SHIELD_SPAWN_INTERVAL_MS = 30000;
-export const DEBUG_SPAWN_SHIELD_FIRST = true; // TODO: set false before release — first shield spawns immediately
+export const SHIELD_SPAWN_INTERVAL_MS = 15000;
+export const GAME_SPEED_INITIAL = 1;
+export const GAME_SPEED_INCREMENT = 0.25;
+export const GAME_SPEED_MAX = 2;
+export const DEBUG_SPAWN_SHIELD_FIRST = false;
 export const SPAWN_RETRY_DELAY_MS = 200;
 export const SPAWN_POSITION_ATTEMPTS = 16;
 export const SPAWN_SEPARATION = s(12);
