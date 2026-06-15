@@ -305,7 +305,9 @@ const OBSTACLE_PENALTY_SPAWN_MAX_MS = 1000;
 
 const CHEAT_CODE_GOD = 'iamagod';
 const CHEAT_CODE_RICH = 'Iamrich';
+const CHEAT_CODE_TURBO = 'turbo';
 const CHEAT_CODE_BUFFER_MAX = 16;
+const CHEAT_TURBO_MULTIPLIER = 4;
 const CHEAT_MAGNET_RADIUS = s(420);
 const CHEAT_MAGNET_SPEED = s(22);
 
@@ -519,7 +521,7 @@ export class EndlessRunnerGame {
   private _nextObstacleAt: number = 0;
   private _nextCoinAt: number = 0;
   private _nextShieldAt: number = 0;
-  private _pausedAt: number = 0;
+  private _spawnClockMs: number = 0;
   private _currentLevel: number = 1;
   private _activeQuestionInLevelIndex: number = 0;
   private _answeredInLevel: boolean[] = [false, false, false, false];
@@ -545,6 +547,7 @@ export class EndlessRunnerGame {
   private _cheatCodeBuffer: string = '';
   private _cheatGodMode: boolean = false;
   private _cheatMagnetCoins: boolean = false;
+  private _cheatTurbo: boolean = false;
   private _audioUnlocked: boolean = false;
 
   constructor(target: HTMLElement, options: EndlessRunnerGameOptions = {}) {
@@ -1041,7 +1044,6 @@ export class EndlessRunnerGame {
       return;
     }
 
-    this._extendSpawnTimers(performance.now() - this._pausedAt);
     this._showPauseMainMenuConfirm = false;
     this._cheatCodeBuffer = '';
     this._state = 'playing';
@@ -1050,19 +1052,8 @@ export class EndlessRunnerGame {
     this._canvas.focus();
   }
 
-  private _extendSpawnTimers(extraMs: number): void {
-    if (extraMs <= 0) {
-      return;
-    }
-
-    this._nextObstacleAt += extraMs;
-    this._nextCoinAt += extraMs;
-    this._nextShieldAt += extraMs;
-  }
-
   private _togglePause(): void {
     if (this._state === 'playing') {
-      this._pausedAt = performance.now();
       this._state = 'paused';
       this._movement = 0;
       this._showPauseMainMenuConfirm = false;
@@ -1105,7 +1096,8 @@ export class EndlessRunnerGame {
     this._obstaclePenalty = 0;
     this._selectedAnswerIndex = 0;
     this._lastTimestamp = 0;
-    this._scheduleSpawns(performance.now());
+    this._spawnClockMs = 0;
+    this._scheduleSpawns(0);
     this._startGameMusic();
     this._canvas.focus();
   }
@@ -1133,14 +1125,16 @@ export class EndlessRunnerGame {
   }
 
   private _update(delta: number, timestamp: number): void {
-    const frameScale = delta / 16.67;
+    const speedMultiplier = this._cheatTurbo ? CHEAT_TURBO_MULTIPLIER : 1;
+    const frameScale = (delta / 16.67) * speedMultiplier;
+    this._spawnClockMs += delta * speedMultiplier;
 
     if (this._movement !== 0) {
       this._playerY += this._movement * PLAYER_SPEED * frameScale;
       this._clampPlayer();
     }
 
-    this._spawnEntities(timestamp);
+    this._spawnEntities(this._spawnClockMs);
     this._moveEntities(frameScale);
     if (this._cheatMagnetCoins) {
       this._attractCoins(frameScale);
@@ -1153,6 +1147,7 @@ export class EndlessRunnerGame {
     this._cheatCodeBuffer = '';
     this._cheatGodMode = false;
     this._cheatMagnetCoins = false;
+    this._cheatTurbo = false;
   }
 
   private _handlePauseCheatInput(event: KeyboardEvent): void {
@@ -1164,6 +1159,7 @@ export class EndlessRunnerGame {
     const lower = this._cheatCodeBuffer.toLowerCase();
     const godCode = CHEAT_CODE_GOD.toLowerCase();
     const richCode = CHEAT_CODE_RICH.toLowerCase();
+    const turboCode = CHEAT_CODE_TURBO.toLowerCase();
 
     if (lower.length >= godCode.length && lower.slice(lower.length - godCode.length) === godCode) {
       this._cheatGodMode = true;
@@ -1173,6 +1169,12 @@ export class EndlessRunnerGame {
 
     if (lower.length >= richCode.length && lower.slice(lower.length - richCode.length) === richCode) {
       this._cheatMagnetCoins = true;
+      this._cheatCodeBuffer = '';
+      return;
+    }
+
+    if (lower.length >= turboCode.length && lower.slice(lower.length - turboCode.length) === turboCode) {
+      this._cheatTurbo = true;
       this._cheatCodeBuffer = '';
     }
   }
@@ -1214,20 +1216,20 @@ export class EndlessRunnerGame {
     }
   }
 
-  private _spawnEntities(timestamp: number): void {
+  private _spawnEntities(gameTimeMs: number): void {
     if (!this._assets) {
       return;
     }
 
-    if (timestamp >= this._nextObstacleAt) {
+    if (gameTimeMs >= this._nextObstacleAt) {
       if (this._trySpawnObstacle()) {
-        this._nextObstacleAt = timestamp + this._getObstacleSpawnDelay();
+        this._nextObstacleAt = gameTimeMs + this._getObstacleSpawnDelay();
       } else {
-        this._nextObstacleAt = timestamp + SPAWN_RETRY_DELAY_MS;
+        this._nextObstacleAt = gameTimeMs + SPAWN_RETRY_DELAY_MS;
       }
     }
 
-    if (timestamp >= this._nextCoinAt) {
+    if (gameTimeMs >= this._nextCoinAt) {
       const spawnX = DESIGN_WIDTH + COIN_DISPLAY_SIZE;
       const maxY = this._playableTop() + this._playableHeight() - COIN_DISPLAY_SIZE;
       const spawnY = this._findNonOverlappingY(
@@ -1246,13 +1248,13 @@ export class EndlessRunnerGame {
           height: COIN_DISPLAY_SIZE,
           speed: SCROLL_SPEED
         });
-        this._nextCoinAt = timestamp + this._randomBetween(500, 1200);
+        this._nextCoinAt = gameTimeMs + this._randomBetween(500, 1200);
       } else {
-        this._nextCoinAt = timestamp + SPAWN_RETRY_DELAY_MS;
+        this._nextCoinAt = gameTimeMs + SPAWN_RETRY_DELAY_MS;
       }
     }
 
-    if (timestamp >= this._nextShieldAt) {
+    if (gameTimeMs >= this._nextShieldAt) {
       const spawnX = DESIGN_WIDTH + SHIELD_DISPLAY_SIZE;
       const maxY = this._playableTop() + this._playableHeight() - SHIELD_DISPLAY_SIZE;
       const spawnY = this._findNonOverlappingY(
@@ -1271,9 +1273,9 @@ export class EndlessRunnerGame {
           height: SHIELD_DISPLAY_SIZE,
           speed: SCROLL_SPEED
         });
-        this._nextShieldAt = timestamp + SHIELD_SPAWN_INTERVAL_MS;
+        this._nextShieldAt = gameTimeMs + SHIELD_SPAWN_INTERVAL_MS;
       } else {
-        this._nextShieldAt = timestamp + SPAWN_RETRY_DELAY_MS;
+        this._nextShieldAt = gameTimeMs + SPAWN_RETRY_DELAY_MS;
       }
     }
   }
