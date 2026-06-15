@@ -350,9 +350,16 @@ export const font = menuFont;
 export const PLAYER_X = 0;
 export const PLAYER_HEIGHT = s(84);
 export const PLAYER_SPEED = s(5);
+export const PLAYER_FLOAT = {
+  amplitudeX: 3,
+  amplitudeY: 7,
+  periodXMs: 2800,
+  periodYMs: 2200,
+  yPhase: Math.PI / 3
+};
 export const SCROLL_SPEED = s(4);
 export const COIN_DISPLAY_SIZE = s(104);
-export const PIZZA_DISPLAY_SCALE = 0.68;
+export const PIZZA_DISPLAY_SCALE = 0.5;
 export const SHIELD_DISPLAY_SIZE = s(104);
 export const MAX_LIVES = 3;
 export const OBSTACLE_DISPLAY_SCALE = 1; // 2× previous ~50% native render size
@@ -362,7 +369,8 @@ export const HUD_PADDING = s(16);
 export const PAUSE_BTN_SIZE = s(40);
 export const HEART_SIZE = s(22);
 export const HUD_COIN_SIZE = s(24);
-export const SHOW_OBSTACLE_HITBOXES = true;
+/** Debug collision outlines for the player (red) and obstacles (green). */
+export const SHOW_OBSTACLE_HITBOXES = false;
 export const XP_PER_QUESTION = 10;
 export const XP_PER_LEVEL = 40;
 export const WELCOME_ACCENT = '#F57C00';

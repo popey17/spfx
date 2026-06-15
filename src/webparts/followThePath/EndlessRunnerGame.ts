@@ -62,6 +62,7 @@ import {
   PLAYER_X,
   PLAYER_HEIGHT,
   PLAYER_SPEED,
+  PLAYER_FLOAT,
   SCROLL_SPEED,
   COIN_DISPLAY_SIZE,
   PIZZA_DISPLAY_SCALE,
@@ -1786,9 +1787,22 @@ export class EndlessRunnerGame {
     return midpoint + amplitude * Math.sin(phase);
   }
 
-  private _drawGodModeHoloRing(): void {
-    const centerX = PLAYER_X + this._playerWidth / 2 + s(GOD_MODE_HOLO_RING.offsetX);
-    const centerY = this._playerY + s(GOD_MODE_HOLO_RING.offsetY);
+  private _getPlayerFloatOffset(timestamp: number): { x: number; y: number } {
+    const timeSeconds = timestamp / 1000;
+    const xPeriodSeconds = PLAYER_FLOAT.periodXMs / 1000;
+    const yPeriodSeconds = PLAYER_FLOAT.periodYMs / 1000;
+
+    return {
+      x: Math.sin((timeSeconds * Math.PI * 2) / xPeriodSeconds) * s(PLAYER_FLOAT.amplitudeX),
+      y:
+        Math.sin((timeSeconds * Math.PI * 2) / yPeriodSeconds + PLAYER_FLOAT.yPhase) *
+        s(PLAYER_FLOAT.amplitudeY)
+    };
+  }
+
+  private _drawGodModeHoloRing(drawX: number, drawY: number): void {
+    const centerX = drawX + this._playerWidth / 2 + s(GOD_MODE_HOLO_RING.offsetX);
+    const centerY = drawY + s(GOD_MODE_HOLO_RING.offsetY);
     const radiusX = s(GOD_MODE_HOLO_RING.radiusX);
     const radiusY = s(GOD_MODE_HOLO_RING.radiusY);
 
@@ -1816,9 +1830,9 @@ export class EndlessRunnerGame {
     this._ctx.restore();
   }
 
-  private _drawGodModeAngledWind(timestamp: number): void {
-    const centerX = PLAYER_X + this._playerWidth / 2;
-    const centerY = this._playerY + PLAYER_HEIGHT / 2;
+  private _drawGodModeAngledWind(timestamp: number, drawX: number, drawY: number): void {
+    const centerX = drawX + this._playerWidth / 2;
+    const centerY = drawY + PLAYER_HEIGHT / 2;
     const angle = GOD_MODE_WIND.angleRadians;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
@@ -1862,9 +1876,12 @@ export class EndlessRunnerGame {
   private _drawPlayer(timestamp: number): void {
     const cheatGodModeActive = this._isCheatGodModeActive();
     const ghostModeActive = this._isGhostModeActive(timestamp);
+    const floatOffset = this._getPlayerFloatOffset(timestamp);
+    const drawX = PLAYER_X + floatOffset.x;
+    const drawY = this._playerY + floatOffset.y;
 
     if (cheatGodModeActive) {
-      this._drawGodModeAngledWind(timestamp);
+      this._drawGodModeAngledWind(timestamp, drawX, drawY);
     }
 
     if (ghostModeActive) {
@@ -1875,14 +1892,14 @@ export class EndlessRunnerGame {
     if (this._assets) {
       this._ctx.drawImage(
         this._assets.character,
-        PLAYER_X,
-        this._playerY,
+        drawX,
+        drawY,
         this._playerWidth,
         PLAYER_HEIGHT
       );
     } else {
       this._ctx.fillStyle = '#2196F3';
-      this._ctx.fillRect(PLAYER_X, this._playerY, this._playerWidth, PLAYER_HEIGHT);
+      this._ctx.fillRect(drawX, drawY, this._playerWidth, PLAYER_HEIGHT);
     }
 
     if (ghostModeActive) {
@@ -1890,13 +1907,15 @@ export class EndlessRunnerGame {
     }
 
     if (cheatGodModeActive) {
-      this._drawGodModeHoloRing();
+      this._drawGodModeHoloRing(drawX, drawY);
     }
 
-    const hitbox = this._getPlayerHitbox();
-    this._ctx.strokeStyle = '#FF0000';
-    this._ctx.lineWidth = s(2);
-    this._ctx.strokeRect(hitbox.x, hitbox.y, hitbox.width, hitbox.height);
+    if (SHOW_OBSTACLE_HITBOXES) {
+      const hitbox = this._getPlayerHitbox();
+      this._ctx.strokeStyle = '#FF0000';
+      this._ctx.lineWidth = s(2);
+      this._ctx.strokeRect(hitbox.x, hitbox.y, hitbox.width, hitbox.height);
+    }
   }
 
   private _drawObstacles(): void {
