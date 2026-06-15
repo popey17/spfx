@@ -229,6 +229,10 @@ const QUESTION_POPUP = {
   answerButtonHorizontalInset: 0
 };
 
+const ANSWER_FEEDBACK_MS = 600;
+const ANSWER_CORRECT_TINT = 'rgba(34, 197, 94, 0.55)';
+const ANSWER_WRONG_TINT = 'rgba(239, 68, 68, 0.55)';
+
 // =============================================================================
 // PAUSE CONFIRM DIALOG — small overlay when leaving pause to main menu
 // =============================================================================
@@ -530,6 +534,8 @@ export class EndlessRunnerGame {
   private _disposed: boolean = false;
   private _lastCanvasPressAt: number = 0;
   private _showPauseMainMenuConfirm: boolean = false;
+  private _answerFeedback: { index: number; correct: boolean } | undefined;
+  private _answerFeedbackTimerId: number | undefined;
   private _audioUnlocked: boolean = false;
 
   constructor(target: HTMLElement, options: EndlessRunnerGameOptions = {}) {
@@ -612,6 +618,7 @@ export class EndlessRunnerGame {
       return;
     }
     this._disposed = true;
+    this._clearAnswerFeedbackTimer();
 
     window.cancelAnimationFrame(this._animationFrameId);
     window.removeEventListener('keydown', this._boundKeyDown);
@@ -835,6 +842,10 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'question') {
+      if (this._answerFeedback) {
+        return false;
+      }
+
       const question = this._getCurrentQuestion();
       if (!question) {
         return false;
@@ -952,6 +963,10 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'question') {
+      if (this._answerFeedback) {
+        return;
+      }
+
       if (event.key === 'ArrowLeft') {
         this._selectedAnswerIndex = 0;
         return;
@@ -1457,27 +1472,48 @@ export class EndlessRunnerGame {
     this._state = 'question';
     this._movement = 0;
     this._selectedAnswerIndex = 0;
+    this._answerFeedback = undefined;
+    this._clearAnswerFeedbackTimer();
     this._canvas.focus();
   }
 
+  private _clearAnswerFeedbackTimer(): void {
+    if (this._answerFeedbackTimerId !== undefined) {
+      window.clearTimeout(this._answerFeedbackTimerId);
+      this._answerFeedbackTimerId = undefined;
+    }
+  }
+
   private _handleAnswer(selectedIndex: number): void {
+    if (this._answerFeedback) {
+      return;
+    }
+
     const question = this._getCurrentQuestion();
     if (!question) {
       return;
     }
 
-    if (selectedIndex === question.correctIndex) {
+    const correct = selectedIndex === question.correctIndex;
+    this._selectedAnswerIndex = selectedIndex;
+    this._answerFeedback = { index: selectedIndex, correct };
+
+    if (correct) {
       this._answeredInLevel[this._activeQuestionInLevelIndex] = true;
       this._obstaclePenalty = 0;
       this._advanceToNextLevelIfComplete();
       this._playSfx(this._correctSound);
-      this._resumePlaying();
-      return;
+    } else {
+      this._applyWrongAnswerPenalty();
+      this._playSfx(this._alarmSound);
     }
 
-    this._applyWrongAnswerPenalty();
-    this._playSfx(this._alarmSound);
-    this._resumePlaying();
+    this._clearAnswerFeedbackTimer();
+    this._answerFeedbackTimerId = window.setTimeout(() => {
+      this._answerFeedbackTimerId = undefined;
+      this._answerFeedback = undefined;
+      this._resumePlaying();
+    }, ANSWER_FEEDBACK_MS);
   }
 
   private _createAudio(url: string, volume: number, loop: boolean): HTMLAudioElement {
@@ -2086,7 +2122,8 @@ export class EndlessRunnerGame {
 
   private _drawStyledButton(
     bounds: { x: number; y: number; width: number; height: number },
-    selected: boolean = false
+    selected: boolean = false,
+    feedback?: 'correct' | 'wrong'
   ): void {
     if (this._assets?.buttonBackground) {
       this._drawNineSliceButtonBg(this._assets.buttonBackground, bounds.x, bounds.y, bounds.width, bounds.height);
@@ -2100,7 +2137,13 @@ export class EndlessRunnerGame {
       this._drawCornerBrackets(bounds.x, bounds.y, bounds.width, bounds.height, s(10), WELCOME_ACCENT);
     }
 
-    if (selected) {
+    if (feedback === 'correct') {
+      this._ctx.fillStyle = ANSWER_CORRECT_TINT;
+      this._ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    } else if (feedback === 'wrong') {
+      this._ctx.fillStyle = ANSWER_WRONG_TINT;
+      this._ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    } else if (selected) {
       this._ctx.fillStyle = 'rgba(245, 124, 0, 0.22)';
       this._ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
     }
@@ -2608,9 +2651,10 @@ export class EndlessRunnerGame {
   private _drawAnswerButton(
     bounds: { x: number; y: number; width: number; height: number },
     label: string,
-    selected: boolean
+    selected: boolean,
+    feedback?: 'correct' | 'wrong'
   ): void {
-    this._drawStyledButton(bounds, selected);
+    this._drawStyledButton(bounds, selected, feedback);
     this._drawWrappedTextInRect(
       label,
       bounds,
@@ -2665,10 +2709,16 @@ export class EndlessRunnerGame {
     this._ctx.fillText(question.prompt, centerX, scenarioBottom + QUESTION_POPUP.promptGapBelowScenario);
 
     for (let i = 0; i < question.options.length; i++) {
+      let feedback: 'correct' | 'wrong' | undefined;
+      if (this._answerFeedback?.index === i) {
+        feedback = this._answerFeedback.correct ? 'correct' : 'wrong';
+      }
+
       this._drawAnswerButton(
         this._getAnswerButtonBounds(i),
         question.options[i],
-        i === this._selectedAnswerIndex
+        i === this._selectedAnswerIndex,
+        feedback
       );
     }
   }
