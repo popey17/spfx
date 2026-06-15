@@ -28,6 +28,8 @@ import {
   type ObstacleEntity,
   type CoinEntity,
   type ShieldEntity,
+  type ExplosionParticle,
+  type ExplosionFlash,
   type LoadedAssets,
   DESIGN_WIDTH,
   DESIGN_HEIGHT,
@@ -46,6 +48,7 @@ import {
   COUNTDOWN,
   HIT_GOD_MODE_MS,
   GOD_MODE_PULSE,
+  EXPLOSION,
   PAUSE_CONFIRM,
   MENU_BACKDROP,
   BUTTON_BG_NATIVE,
@@ -136,6 +139,8 @@ export class EndlessRunnerGame {
   private _obstacles: ObstacleEntity[] = [];
   private _coins: CoinEntity[] = [];
   private _shields: ShieldEntity[] = [];
+  private _explosionParticles: ExplosionParticle[] = [];
+  private _explosionFlashes: ExplosionFlash[] = [];
   private _nextObstacleAt: number = 0;
   private _nextCoinAt: number = 0;
   private _nextShieldAt: number = 0;
@@ -701,6 +706,8 @@ export class EndlessRunnerGame {
     this._obstacles = [];
     this._coins = [];
     this._shields = [];
+    this._explosionParticles = [];
+    this._explosionFlashes = [];
     this._startMenuMusic();
     this._canvas.focus();
   }
@@ -715,6 +722,8 @@ export class EndlessRunnerGame {
     this._obstacles = [];
     this._coins = [];
     this._shields = [];
+    this._explosionParticles = [];
+    this._explosionFlashes = [];
     this._currentLevel = 1;
     this._activeQuestionInLevelIndex = 0;
     this._answeredInLevel = [false, false, false, false];
@@ -767,6 +776,10 @@ export class EndlessRunnerGame {
       this._resumeGameMusic();
     }
 
+    if (this._explosionParticles.length > 0 || this._explosionFlashes.length > 0) {
+      this._updateExplosions(delta, timestamp);
+    }
+
     this._draw(timestamp);
     this._animationFrameId = window.requestAnimationFrame(this._boundGameLoop);
   }
@@ -788,6 +801,65 @@ export class EndlessRunnerGame {
     }
     this._cleanupEntities();
     this._checkCollisions(timestamp);
+  }
+
+  private _getCollisionCenter(
+    a: { x: number; y: number; width: number; height: number },
+    b: { x: number; y: number; width: number; height: number }
+  ): { x: number; y: number } {
+    const left = Math.max(a.x, b.x);
+    const right = Math.min(a.x + a.width, b.x + b.width);
+    const top = Math.max(a.y, b.y);
+    const bottom = Math.min(a.y + a.height, b.y + b.height);
+
+    return {
+      x: (left + right) / 2,
+      y: (top + bottom) / 2
+    };
+  }
+
+  private _spawnExplosion(x: number, y: number, timestamp: number): void {
+    this._explosionFlashes.push({ x, y, startedAt: timestamp });
+
+    for (let i = 0; i < EXPLOSION.particleCount; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = s(this._randomBetween(EXPLOSION.minSpeed, EXPLOSION.maxSpeed));
+      const color = EXPLOSION.colors[this._randomBetween(0, EXPLOSION.colors.length - 1)];
+
+      this._explosionParticles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        radius: s(this._randomBetween(EXPLOSION.minRadius, EXPLOSION.maxRadius)),
+        color,
+        lifeMs: EXPLOSION.lifetimeMs,
+        maxLifeMs: EXPLOSION.lifetimeMs
+      });
+    }
+  }
+
+  private _updateExplosions(delta: number, timestamp: number): void {
+    const frameScale = delta / 16.67;
+    const gravity = s(EXPLOSION.gravity) * frameScale;
+
+    for (let i = this._explosionParticles.length - 1; i >= 0; i--) {
+      const particle = this._explosionParticles[i];
+      particle.x += particle.vx * frameScale;
+      particle.y += particle.vy * frameScale;
+      particle.vy += gravity;
+      particle.lifeMs -= delta;
+
+      if (particle.lifeMs <= 0) {
+        this._explosionParticles.splice(i, 1);
+      }
+    }
+
+    for (let j = this._explosionFlashes.length - 1; j >= 0; j--) {
+      if (timestamp - this._explosionFlashes[j].startedAt >= EXPLOSION.flashLifetimeMs) {
+        this._explosionFlashes.splice(j, 1);
+      }
+    }
   }
 
   private _isGodModeActive(timestamp: number): boolean {
@@ -1052,6 +1124,8 @@ export class EndlessRunnerGame {
         playerTop < obstacleHitbox.y + obstacleHitbox.height
       ) {
         this._obstacles.splice(i, 1);
+        const impact = this._getCollisionCenter(hitbox, obstacleHitbox);
+        this._spawnExplosion(impact.x, impact.y, timestamp);
 
         if (godModeActive) {
           return;
@@ -1433,6 +1507,10 @@ export class EndlessRunnerGame {
       this._drawHud();
     }
 
+    if (this._state !== 'waiting') {
+      this._drawExplosions(timestamp);
+    }
+
     if (this._state === 'paused') {
       this._drawPauseScreen();
     } else if (this._state === 'question') {
@@ -1470,6 +1548,42 @@ export class EndlessRunnerGame {
       DESIGN_WIDTH,
       DESIGN_HEIGHT
     );
+  }
+
+  private _drawExplosions(timestamp: number): void {
+    for (let i = 0; i < this._explosionFlashes.length; i++) {
+      const flash = this._explosionFlashes[i];
+      const progress = (timestamp - flash.startedAt) / EXPLOSION.flashLifetimeMs;
+      const radius = s(EXPLOSION.flashMaxRadius) * progress;
+      const alpha = 1 - progress;
+
+      this._ctx.save();
+      this._ctx.globalAlpha = alpha * 0.55;
+      this._ctx.fillStyle = '#FFF3C4';
+      this._ctx.beginPath();
+      this._ctx.arc(flash.x, flash.y, radius, 0, Math.PI * 2);
+      this._ctx.fill();
+
+      this._ctx.globalAlpha = alpha * 0.35;
+      this._ctx.fillStyle = '#FF9800';
+      this._ctx.beginPath();
+      this._ctx.arc(flash.x, flash.y, radius * 0.65, 0, Math.PI * 2);
+      this._ctx.fill();
+      this._ctx.restore();
+    }
+
+    for (let j = 0; j < this._explosionParticles.length; j++) {
+      const particle = this._explosionParticles[j];
+      const alpha = Math.max(0, particle.lifeMs / particle.maxLifeMs);
+
+      this._ctx.save();
+      this._ctx.globalAlpha = alpha;
+      this._ctx.fillStyle = particle.color;
+      this._ctx.beginPath();
+      this._ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+      this._ctx.fill();
+      this._ctx.restore();
+    }
   }
 
   private _getGodModePulseOpacity(timestamp: number): number {

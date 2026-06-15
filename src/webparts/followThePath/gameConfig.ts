@@ -38,6 +38,23 @@ export interface ShieldEntity {
   speed: number;
 }
 
+export interface ExplosionParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  color: string;
+  lifeMs: number;
+  maxLifeMs: number;
+}
+
+export interface ExplosionFlash {
+  x: number;
+  y: number;
+  startedAt: number;
+}
+
 export interface LoadedAssets {
   background: HTMLImageElement;
   character: HTMLImageElement;
@@ -224,6 +241,19 @@ export const GOD_MODE_PULSE = {
   minOpacity: 0.5,
   maxOpacity: 0.8,
   periodMs: 600
+};
+
+export const EXPLOSION = {
+  particleCount: 20,
+  lifetimeMs: 550,
+  flashLifetimeMs: 140,
+  minSpeed: 3,
+  maxSpeed: 9,
+  minRadius: 2,
+  maxRadius: 7,
+  flashMaxRadius: 44,
+  gravity: 0.12,
+  colors: ['#FFFFFF', '#FFEB3B', '#FFC107', '#FF9800', '#FF5722']
 };
 
 // =============================================================================
