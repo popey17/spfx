@@ -8,6 +8,7 @@ const menuBgUrl: string = require('./assets/img_menuBg.png');
 const speechBubbleUrl: string = require('./assets/img_Bubble.png');
 const buttonBgUrl: string = require('./assets/buttonBg.png');
 const buttonCornerUrl: string = require('./assets/buttonCorner.png');
+const pauseBtnUrl: string = require('./assets/img_pauseBtn.png');
 const coinSoundUrl: string = require('./assets/sound/coin.mp3');
 const crushSoundUrl: string = require('./assets/sound/crush.mp3');
 const alarmSoundUrl: string = require('./assets/sound/alarm.mp3');
@@ -75,6 +76,8 @@ import {
   PAUSE_BTN_SIZE,
   HEART_SIZE,
   HUD_COIN_SIZE,
+  HUD,
+  PAUSE_BTN_NATIVE,
   MOBILE_CONTROLS,
   SHOW_OBSTACLE_HITBOXES,
   WELCOME_ACCENT,
@@ -345,8 +348,9 @@ export class EndlessRunnerGame {
       this._loadImage(speechBubbleUrl),
       this._loadImage(buttonBgUrl),
       this._loadImage(buttonCornerUrl),
+      this._loadImage(pauseBtnUrl),
       Promise.all(obstacleUrls.map((url) => this._loadImage(url)))
-    ]).then(([background, character, coin, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, obstacles]) => {
+    ]).then(([background, character, coin, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, obstacles]) => {
       this._assets = {
         background,
         character,
@@ -357,12 +361,14 @@ export class EndlessRunnerGame {
         speechBubble,
         buttonBackground,
         buttonCorner,
+        pauseButton,
         obstacles,
         obstacleMeta: OBSTACLE_NATIVE,
         characterMeta: CHARACTER_SPRITE_NATIVE,
         coinMeta: { width: 172, height: 171 },
         pizzaMeta: { width: 172, height: 171 },
         shieldMeta: { width: 172, height: 171 },
+        pauseButtonMeta: PAUSE_BTN_NATIVE,
         speechBubbleMeta: { width: 600, height: 321 }
       };
     });
@@ -2067,7 +2073,7 @@ export class EndlessRunnerGame {
     this._ctx.textAlign = 'left';
     this._ctx.textBaseline = 'middle';
 
-    const livesLabel = 'LIVES LEFT:';
+    const livesLabel = HUD.livesLabel;
     this._ctx.fillText(livesLabel, HUD_PADDING, hudCenterY);
 
     const heartsStartX = HUD_PADDING + this._ctx.measureText(livesLabel).width + s(10);
@@ -2075,15 +2081,28 @@ export class EndlessRunnerGame {
       this._drawHeart(heartsStartX + i * (HEART_SIZE + s(8)), hudCenterY - HEART_SIZE / 2, i < this._lives);
     }
 
+    this._drawLevelHud(hudCenterY);
     this._drawScoreHud(hudCenterY);
     this._drawPauseButton();
     this._clearHudTextShadow();
   }
 
+  private _drawLevelHud(centerY: number): void {
+    const levelIndex = Math.max(0, Math.min(this._currentLevel - 1, HUD.levelNames.length - 1));
+    const levelName = HUD.levelNames[levelIndex] ?? HUD.levelNames[0];
+    const levelText = HUD.levelText(this._currentLevel, levelName);
+
+    this._ctx.font = font(HUD.levelFontSize);
+    this._ctx.fillStyle = '#FFFFFF';
+    this._ctx.textAlign = 'center';
+    this._ctx.textBaseline = 'middle';
+    this._ctx.fillText(levelText, DESIGN_WIDTH / 2, centerY);
+  }
+
   private _drawScoreHud(centerY: number): void {
     const pauseBounds = this._getPauseButtonBounds();
     const scoreAreaRight = pauseBounds.x - s(14);
-    const scoreLabel = 'SCORE:';
+    const scoreLabel = HUD.scoreLabel;
     const scoreValue = String(this._score);
 
     this._ctx.font = font(18);
@@ -2247,6 +2266,12 @@ export class EndlessRunnerGame {
 
   private _drawPauseButton(): void {
     const bounds = this._getPauseButtonBounds();
+
+    if (this._assets?.pauseButton) {
+      this._ctx.drawImage(this._assets.pauseButton, bounds.x, bounds.y, bounds.size, bounds.size);
+      return;
+    }
+
     const centerX = bounds.x + bounds.size / 2;
     const centerY = bounds.y + bounds.size / 2;
     const radius = bounds.size / 2;
@@ -3082,7 +3107,7 @@ export class EndlessRunnerGame {
   }
 
   private _drawPauseConfirmDialog(): void {
-    this._ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    this._ctx.fillStyle = PAUSE_CONFIRM.overlayColor;
     this._ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
 
     const panel = this._getPauseConfirmPanelBounds();

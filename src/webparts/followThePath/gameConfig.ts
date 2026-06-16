@@ -79,12 +79,14 @@ export interface LoadedAssets {
   speechBubble: HTMLImageElement;
   buttonBackground: HTMLImageElement;
   buttonCorner: HTMLImageElement;
+  pauseButton: HTMLImageElement;
   obstacles: HTMLImageElement[];
   obstacleMeta: SpriteMeta[];
   characterMeta: SpriteMeta;
   coinMeta: SpriteMeta;
   pizzaMeta: SpriteMeta;
   shieldMeta: SpriteMeta;
+  pauseButtonMeta: SpriteMeta;
   speechBubbleMeta: SpriteMeta;
 }
 
@@ -186,7 +188,7 @@ export const GAME_OVER_MENU = {
 // =============================================================================
 export const PAUSE_MENU = {
   /** Shift entire pause stack up/down from screen center (negative = higher). */
-  stackOffsetY: 30,
+  stackOffsetY: 0,
 
   iconBarWidth: 14,
   iconBarHeight: 40,
@@ -323,6 +325,8 @@ export const CONFETTI = {
 // PAUSE CONFIRM DIALOG — small overlay when leaving pause to main menu
 // =============================================================================
 export const PAUSE_CONFIRM = {
+  /** Full-screen dim behind the confirm panel (higher alpha = more opaque). */
+  overlayColor: 'rgba(0, 0, 0, 0.75)',
   width: 520,
   height: 280,
   messageFontSize: 16,
@@ -376,8 +380,18 @@ export const COLLISION_SCALE = 0.72; // collision area is smaller than the rende
 export const HUD_HEIGHT = s(52);
 export const HUD_PADDING = s(16);
 export const PAUSE_BTN_SIZE = s(40);
+export const PAUSE_BTN_NATIVE = { width: 164, height: 164 };
 export const HEART_SIZE = s(22);
 export const HUD_COIN_SIZE = s(24);
+/** In-game top bar labels and level display. */
+export const HUD = {
+  livesLabel: 'LIVES LEFT:',
+  scoreLabel: 'SCORE:',
+  levelFontSize: 18,
+  /** Display names for question levels 1–3 (index 0 = level 1). */
+  levelNames: ['EASY', 'MEDIUM', 'HARD'] as const,
+  levelText: (level: number, levelName: string): string => 'LEVEL ' + level + ': ' + levelName
+};
 /** On-screen up/down controls for touch devices (auto-detected). */
 export const MOBILE_CONTROLS = {
   enabled: true,
