@@ -120,7 +120,6 @@ import {
   CHEAT_TURBO_MULTIPLIER,
   CHEAT_MAGNET_RADIUS,
   CHEAT_MAGNET_SPEED,
-  XP_PER_QUESTION,
   QUESTIONS,
   OBSTACLE_NATIVE,
   CHARACTER_SPRITE_NATIVE,
@@ -912,10 +911,10 @@ export class EndlessRunnerGame {
     }
   }
 
-  private _scheduleSpawns(now: number): void {
-    this._nextObstacleAt = now + this._randomBetween(OBSTACLE_SPAWN_MIN_MS, OBSTACLE_SPAWN_MAX_MS);
-    this._nextCoinAt = now + this._randomBetween(500, 1200);
-    this._nextShieldAt = DEBUG_SPAWN_SHIELD_FIRST ? now : now + this._getQuestionSpawnIntervalMs();
+  private _scheduleSpawns(spawnClockMs: number): void {
+    this._nextObstacleAt = spawnClockMs + this._randomBetween(OBSTACLE_SPAWN_MIN_MS, OBSTACLE_SPAWN_MAX_MS);
+    this._nextCoinAt = spawnClockMs + this._randomBetween(500, 1200);
+    this._nextShieldAt = DEBUG_SPAWN_SHIELD_FIRST ? spawnClockMs : spawnClockMs + this._getQuestionSpawnIntervalMs();
   }
 
   private _getEffectiveSpeedMultiplier(): number {
@@ -1614,7 +1613,7 @@ export class EndlessRunnerGame {
     this._coins = [];
     this._shields = [];
     this._spawnClockMs = 0;
-    this._scheduleSpawns(performance.now());
+    this._scheduleSpawns(0);
 
     if (LEVEL_INTRO.enabled && LEVEL_INTRO.showOnLevelAdvance) {
       this._startLevelIntro();
@@ -2802,10 +2801,6 @@ export class EndlessRunnerGame {
     }
 
     this._xpEarnedSlots[globalIndex] = true;
-    const levelIndex = this._currentLevel - 1;
-    if (this._sessionXpByLevel[levelIndex] !== undefined) {
-      this._sessionXpByLevel[levelIndex] += XP_PER_QUESTION;
-    }
 
     if (this._xpEarnedSlots.every((earned) => earned)) {
       this._freeModeUnlocked = true;

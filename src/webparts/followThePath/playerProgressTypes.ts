@@ -1,4 +1,9 @@
-import { MAX_QUESTION_LEVEL, QUESTIONS_PER_LEVEL, TOTAL_QUESTION_COUNT, XP_PER_QUESTION } from './gameConfig';
+import {
+  MAX_QUESTION_LEVEL,
+  QUESTIONS_PER_LEVEL,
+  TOTAL_QUESTION_COUNT,
+  LEVEL_XP_REWARDS
+} from './gameConfig';
 
 /**
  * Users list — one row per player (profile + cross-game totals).
@@ -168,15 +173,21 @@ export function getProgressLevelFromSlots(earnedQuestionSlots: boolean[]): numbe
 
 export function getLevelXpFromSlots(earnedQuestionSlots: boolean[], level: number): number {
   const start = (level - 1) * QUESTIONS_PER_LEVEL;
-  let xp = 0;
+  let allEarned = true;
 
   for (let q = 0; q < QUESTIONS_PER_LEVEL; q++) {
-    if (earnedQuestionSlots[start + q]) {
-      xp += XP_PER_QUESTION;
+    if (!earnedQuestionSlots[start + q]) {
+      allEarned = false;
+      break;
     }
   }
 
-  return xp;
+  if (!allEarned) {
+    return 0;
+  }
+
+  const index = level - 1;
+  return LEVEL_XP_REWARDS[index] ?? 0;
 }
 
 export function getGame1LevelXpTotals(earnedQuestionSlots: boolean[]): {

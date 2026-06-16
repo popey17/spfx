@@ -521,8 +521,10 @@ export const MOBILE_CONTROLS = {
 };
 /** Debug collision outlines for the player (red) and obstacles (green). */
 export const SHOW_OBSTACLE_HITBOXES = true;
-export const XP_PER_QUESTION = 10;
-export const XP_PER_LEVEL = 40;
+/** Legacy per-question XP — no longer used for rewards but kept for compatibility. */
+export const XP_PER_QUESTION = 0;
+/** XP granted once per level when all questions in that level are completed. */
+export const LEVEL_XP_REWARDS = [100, 150, 200] as const;
 export const WELCOME_ACCENT = '#F57C00';
 export const WELCOME_PANEL_FILL = 'rgba(28, 32, 42, 0.9)';
 export const MUSIC_VOLUME = 0.35;
