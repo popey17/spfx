@@ -17,6 +17,7 @@ import {
   writeUserTotalsToBody,
   createEmptyEarnedQuestionSlots,
   serializeEarnedQuestionSlots,
+  computeUserTotalXp,
   type GameSessionResult,
   type PlayerSession,
   type UserProfileRecord,
@@ -124,9 +125,8 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     const followThePath = buildFollowThePathProgressFromSession(session);
     const usersBody = writeUserTotalsToBody(
       this._profile,
-      session.coinsCollected,
-      session.xpGainedInLevel,
-      session.completedLevel
+      followThePath.earnedQuestionSlots,
+      session.coinsCollected
     );
     const gameBody = writeFollowThePathProgressToBody(followThePath);
 
@@ -147,11 +147,11 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     this._profile = {
       ...this._profile,
       totalCoin: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.totalCoin]),
-      totalXp: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.totalXp]),
       game1Level1Xp: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.game1Level1Xp]),
       game1Level2Xp: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.game1Level2Xp]),
       game1Level3Xp: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.game1Level3Xp])
     };
+    this._profile.totalXp = computeUserTotalXp(this._profile);
   }
 
   private async _ensureProfileLoaded(email: string): Promise<void> {

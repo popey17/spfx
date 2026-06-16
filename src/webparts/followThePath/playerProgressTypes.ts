@@ -10,11 +10,11 @@ import {
  * Game1Data list — Follow the Path progress, linked by Email.
  *
  * Users columns (SharePoint internal names — do not change the list):
- * | Title | Email | TotalCoin | TotalXP | MiniQuestXP | MasteryQuestXP |
+ * | Title | Email | TotalCoin | MiniQuestXP | MasteryQuestXP |
  * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
  * | Game2Level1XP | Game2Level2XP | Game2Level3XP |
  *
- * TotalXP and per-level XP columns accumulate — new XP is added, not replaced.
+ * TotalXP is a read-only/calculated column on the list — never written by this game.
  *
  * Game1Data columns:
  * | Email | FollowThePath_HighScore | FollowThePath_Level (Text) | FollowThePath_LevelXp |
@@ -115,8 +115,6 @@ export interface GameSessionResult {
   highScore: number;
   level: number;
   xpGainedInLevel: number;
-  /** Campaign level that earned xpGainedInLevel (0 when no new XP this save). */
-  completedLevel: number;
   xpGainedThisSession: number;
   earnedQuestionSlots: boolean[];
   freeModeUnlocked: boolean;
@@ -401,36 +399,19 @@ export function writeFollowThePathProgressCreateBody(
 
 export function writeUserTotalsToBody(
   profile: UserProfileRecord,
-  coinsCollected: number,
-  xpGainedInLevel: number,
-  completedLevel: number
+  earnedQuestionSlots: boolean[],
+  coinsCollected: number
 ): Record<string, string | number> {
   const fields = USERS_LIST_CONFIG.fields;
-  let game1Level1Xp = profile.game1Level1Xp;
-  let game1Level2Xp = profile.game1Level2Xp;
-  let game1Level3Xp = profile.game1Level3Xp;
-  let totalXp = profile.totalXp;
-
-  if (xpGainedInLevel > 0 && completedLevel >= 1 && completedLevel <= MAX_QUESTION_LEVEL) {
-    totalXp += xpGainedInLevel;
-
-    if (completedLevel === 1) {
-      game1Level1Xp += xpGainedInLevel;
-    } else if (completedLevel === 2) {
-      game1Level2Xp += xpGainedInLevel;
-    } else if (completedLevel === 3) {
-      game1Level3Xp += xpGainedInLevel;
-    }
-  }
+  const levelXp = getGame1LevelXpTotals(earnedQuestionSlots);
 
   return {
     [fields.totalCoin]: profile.totalCoin + coinsCollected,
-    [fields.totalXp]: totalXp,
     [fields.miniQuestXp]: profile.miniQuestXp,
     [fields.masteryQuestXp]: profile.masteryQuestXp,
-    [fields.game1Level1Xp]: game1Level1Xp,
-    [fields.game1Level2Xp]: game1Level2Xp,
-    [fields.game1Level3Xp]: game1Level3Xp,
+    [fields.game1Level1Xp]: levelXp.game1Level1Xp,
+    [fields.game1Level2Xp]: levelXp.game1Level2Xp,
+    [fields.game1Level3Xp]: levelXp.game1Level3Xp,
     [fields.game2Level1Xp]: profile.game2Level1Xp,
     [fields.game2Level2Xp]: profile.game2Level2Xp,
     [fields.game2Level3Xp]: profile.game2Level3Xp
@@ -444,7 +425,6 @@ export function writeUserRegistrationBody(input: UserRegistrationInput): Record<
     Title: input.title,
     [fields.email]: input.email,
     [fields.totalCoin]: 0,
-    [fields.totalXp]: 0,
     [fields.miniQuestXp]: 0,
     [fields.masteryQuestXp]: 0,
     [fields.game1Level1Xp]: 0,

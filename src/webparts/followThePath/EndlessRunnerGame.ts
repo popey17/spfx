@@ -2810,9 +2810,6 @@ export class EndlessRunnerGame {
       xpGainedThisSession += this._sessionXpByLevel[i];
     }
 
-    const xpGainedInLevel = this._getLevelXpEarned();
-    const completedLevel = xpGainedInLevel > 0 ? this._currentLevel : 0;
-
     this._sessionProgressSaving = true;
 
     this._progressService
@@ -2820,8 +2817,7 @@ export class EndlessRunnerGame {
         coinsCollected: coinDelta,
         highScore: newHighScore,
         level: this._getProgressLevel(),
-        xpGainedInLevel,
-        completedLevel,
+        xpGainedInLevel: this._getLevelXpEarned(),
         xpGainedThisSession,
         earnedQuestionSlots: [...this._xpEarnedSlots],
         freeModeUnlocked: this._freeModeUnlocked
@@ -2830,9 +2826,6 @@ export class EndlessRunnerGame {
         this._coinsPersistedScore = this._score;
         this._xpEarnedSlotsAtLastSave = this._copyEarnedQuestionSlots(this._xpEarnedSlots);
         this._xpEarnedSlotsXpBaseline = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
-        if (completedLevel > 0) {
-          this._sessionXpByLevel[completedLevel - 1] = 0;
-        }
         this._sessionProgressSaving = false;
 
         if (endOfSession) {
