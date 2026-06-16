@@ -100,9 +100,9 @@ import {
   GAME_SPEED_INCREMENT,
   GAME_SPEED_MAX,
   DEBUG_SPAWN_SHIELD_FIRST,
+  DEBUG_AUTO_COLLECT_SHIELDS,
   DEBUG_FORCE_FREE_MODE,
   DEBUG_SHOW_LEVEL_COMPLETE_AT_START,
-  LEVEL_XP_REWARDS,
   SPAWN_RETRY_DELAY_MS,
   SPAWN_POSITION_ATTEMPTS,
   SPAWN_SEPARATION,
@@ -134,6 +134,7 @@ import type { IPlayerProgressService } from './IPlayerProgressService';
 import {
   createEmptyEarnedQuestionSlots,
   createDefaultPlayerProgress,
+  getLevelXpFromSlots,
   type PlayerProgressRecord
 } from './playerProgressTypes';
 
@@ -205,6 +206,7 @@ export class EndlessRunnerGame {
   private _bestScore: number = 0;
   private _xpEarnedSlots: boolean[] = createEmptyEarnedQuestionSlots();
   private _freeModeUnlocked: boolean = false;
+  private _isFreePlaySession: boolean = false;
   private _freeModeDifficulty: number = 1;
   private readonly _progressService: IPlayerProgressService | undefined;
   private readonly _questions: Question[];
@@ -863,6 +865,7 @@ export class EndlessRunnerGame {
   }
 
   private _startGame(): void {
+    this._isFreePlaySession = this._freeModeUnlocked;
     this._score = 0;
     this._lives = MAX_LIVES;
     this._playerY = this._playableCenterY();
@@ -1425,6 +1428,12 @@ export class EndlessRunnerGame {
   }
 
   private _checkCollisions(timestamp: number): void {
+    if (DEBUG_AUTO_COLLECT_SHIELDS && this._shields.length > 0) {
+      this._shields.splice(0, this._shields.length);
+      this._showQuestion();
+      return;
+    }
+
     const hitbox = this._getPlayerHitbox();
     const playerLeft = hitbox.x;
     const playerRight = hitbox.x + hitbox.width;
@@ -1580,13 +1589,12 @@ export class EndlessRunnerGame {
   }
 
   private _showLevelCompleteScreen(): void {
-    if (!this._freeModeUnlocked) {
+    if (!this._isFreePlaySession) {
       const levelIndex = this._currentLevel - 1;
-      const reward = LEVEL_XP_REWARDS[levelIndex];
-      const newlyCompletedLevel = this._isLevelNewlyCompletedForXp(this._currentLevel);
+      const xpEarned = this._getLevelXpRewardForLevel(this._currentLevel);
 
-      if (reward !== undefined && newlyCompletedLevel) {
-        this._sessionXpByLevel[levelIndex] = reward;
+      if (xpEarned > 0) {
+        this._sessionXpByLevel[levelIndex] = xpEarned;
       }
     }
 
@@ -1597,22 +1605,15 @@ export class EndlessRunnerGame {
     this._canvas.focus();
   }
 
-  private _isLevelFullyEarnedInSlots(slots: boolean[], level: number): boolean {
-    const start = (level - 1) * QUESTIONS_PER_LEVEL;
-
-    for (let q = 0; q < QUESTIONS_PER_LEVEL; q++) {
-      if (!slots[start + q]) {
-        return false;
-      }
+  private _getLevelXpRewardForLevel(level: number): number {
+    if (this._isFreePlaySession) {
+      return 0;
     }
 
-    return true;
-  }
-
-  private _isLevelNewlyCompletedForXp(level: number): boolean {
-    return (
-      this._isLevelFullyEarnedInSlots(this._xpEarnedSlots, level) &&
-      !this._isLevelFullyEarnedInSlots(this._xpEarnedSlotsXpBaseline, level)
+    return Math.max(
+      0,
+      getLevelXpFromSlots(this._xpEarnedSlots, level) -
+        getLevelXpFromSlots(this._xpEarnedSlotsXpBaseline, level)
     );
   }
 
@@ -1638,12 +1639,7 @@ export class EndlessRunnerGame {
       return sessionXp;
     }
 
-    if (!this._freeModeUnlocked && this._isLevelNewlyCompletedForXp(this._currentLevel)) {
-      const reward = LEVEL_XP_REWARDS[levelIndex];
-      return reward !== undefined ? reward : 0;
-    }
-
-    return 0;
+    return this._getLevelXpRewardForLevel(this._currentLevel);
   }
 
   private _proceedFromLevelComplete(): void {
@@ -1660,6 +1656,9 @@ export class EndlessRunnerGame {
 
     if (this._currentLevel >= MAX_QUESTION_LEVEL) {
       this._allQuestionsComplete = true;
+      if (this._xpEarnedSlots.every((earned) => earned)) {
+        this._freeModeUnlocked = true;
+      }
       this._savePlayerProgress(true);
       this._goToMainMenu();
       return;
@@ -2811,6 +2810,9 @@ export class EndlessRunnerGame {
       xpGainedThisSession += this._sessionXpByLevel[i];
     }
 
+    const xpGainedInLevel = this._getLevelXpEarned();
+    const completedLevel = xpGainedInLevel > 0 ? this._currentLevel : 0;
+
     this._sessionProgressSaving = true;
 
     this._progressService
@@ -2818,7 +2820,8 @@ export class EndlessRunnerGame {
         coinsCollected: coinDelta,
         highScore: newHighScore,
         level: this._getProgressLevel(),
-        xpGainedInLevel: this._getLevelXpEarned(),
+        xpGainedInLevel,
+        completedLevel,
         xpGainedThisSession,
         earnedQuestionSlots: [...this._xpEarnedSlots],
         freeModeUnlocked: this._freeModeUnlocked
@@ -2826,6 +2829,10 @@ export class EndlessRunnerGame {
       .then(() => {
         this._coinsPersistedScore = this._score;
         this._xpEarnedSlotsAtLastSave = this._copyEarnedQuestionSlots(this._xpEarnedSlots);
+        this._xpEarnedSlotsXpBaseline = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
+        if (completedLevel > 0) {
+          this._sessionXpByLevel[completedLevel - 1] = 0;
+        }
         this._sessionProgressSaving = false;
 
         if (endOfSession) {
@@ -2868,7 +2875,7 @@ export class EndlessRunnerGame {
   }
 
   private _awardXpForCorrectAnswer(): void {
-    if (this._freeModeUnlocked) {
+    if (this._isFreePlaySession) {
       return;
     }
 
@@ -2881,7 +2888,6 @@ export class EndlessRunnerGame {
     this._xpEarnedSlots[globalIndex] = true;
 
     if (this._xpEarnedSlots.every((earned) => earned)) {
-      this._freeModeUnlocked = true;
       this._allQuestionsComplete = true;
     }
   }

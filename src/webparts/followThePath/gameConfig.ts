@@ -535,6 +535,8 @@ export const GAME_SPEED_INITIAL = 1;
 export const GAME_SPEED_INCREMENT = 0.25;
 export const GAME_SPEED_MAX = 2;
 export const DEBUG_SPAWN_SHIELD_FIRST = false;
+/** Set true to auto-collect question shields as soon as they appear on screen. */
+export const DEBUG_AUTO_COLLECT_SHIELDS = false;
 /** Set true to force free mode on the welcome screen (ignores SharePoint progress). */
 export const DEBUG_FORCE_FREE_MODE = false;
 /** Set true to show the level-complete congrats screen immediately when a game starts. */

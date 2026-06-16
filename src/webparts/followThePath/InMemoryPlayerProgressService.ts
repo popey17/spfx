@@ -4,8 +4,8 @@ import {
   createDefaultPlayerProgress,
   createDefaultUserProfile,
   followThePathProgressToRecord,
-  getGame1LevelXpTotals,
-  computeUserTotalXp,
+  USERS_LIST_CONFIG,
+  writeUserTotalsToBody,
   type GameSessionResult,
   type PlayerSession,
   type UserProfileRecord,
@@ -39,21 +39,27 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
 
   public async saveAfterGame(session: GameSessionResult): Promise<void> {
     const game = buildFollowThePathProgressFromSession(session);
-    const totalCoins = (this._profile?.totalCoin || 0) + session.coinsCollected;
 
     if (this._profile) {
-      const levelXp = getGame1LevelXpTotals(game.earnedQuestionSlots);
+      const fields = USERS_LIST_CONFIG.fields;
+      const usersBody = writeUserTotalsToBody(
+        this._profile,
+        session.coinsCollected,
+        session.xpGainedInLevel,
+        session.completedLevel
+      );
       this._profile = {
         ...this._profile,
-        totalCoin: totalCoins,
-        game1Level1Xp: levelXp.game1Level1Xp,
-        game1Level2Xp: levelXp.game1Level2Xp,
-        game1Level3Xp: levelXp.game1Level3Xp
+        totalCoin: Number(usersBody[fields.totalCoin]),
+        totalXp: Number(usersBody[fields.totalXp]),
+        game1Level1Xp: Number(usersBody[fields.game1Level1Xp]),
+        game1Level2Xp: Number(usersBody[fields.game1Level2Xp]),
+        game1Level3Xp: Number(usersBody[fields.game1Level3Xp])
       };
-      this._profile.totalXp = computeUserTotalXp(this._profile);
     }
 
     const totalXp = this._profile?.totalXp || 0;
+    const totalCoins = this._profile?.totalCoin || 0;
 
     this._record = followThePathProgressToRecord(game, totalXp, totalCoins, {
       usersListItemId: this._profile?.listItemId,
