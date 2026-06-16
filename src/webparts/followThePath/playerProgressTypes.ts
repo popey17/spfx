@@ -19,6 +19,8 @@ import {
  * Game1Data columns:
  * | Email | FollowThePath_HighScore | FollowThePath_Level (Text) | FollowThePath_LevelXp |
  * | FollowThePath_EarnedQuestions | FTPFreeMode |
+ *
+ * FollowThePath_LevelXp stores total XP earned across all completed levels (100+150+200 max).
  */
 export const USERS_LIST_CONFIG = {
   listTitle: 'Users',
@@ -190,6 +192,16 @@ export function getLevelXpFromSlots(earnedQuestionSlots: boolean[], level: numbe
   return LEVEL_XP_REWARDS[index] ?? 0;
 }
 
+export function getTotalEarnedXpFromSlots(earnedQuestionSlots: boolean[]): number {
+  let total = 0;
+
+  for (let level = 1; level <= MAX_QUESTION_LEVEL; level++) {
+    total += getLevelXpFromSlots(earnedQuestionSlots, level);
+  }
+
+  return total;
+}
+
 export function getGame1LevelXpTotals(earnedQuestionSlots: boolean[]): {
   game1Level1Xp: number;
   game1Level2Xp: number;
@@ -263,7 +275,7 @@ export function followThePathProgressToRecord(
     totalCoins,
     highScore: game.highScore,
     level,
-    levelXp: getLevelXpFromSlots(earnedQuestionSlots, level),
+    levelXp: getTotalEarnedXpFromSlots(earnedQuestionSlots),
     earnedQuestionSlots,
     freeModeUnlocked: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned)
   };
@@ -276,7 +288,7 @@ export function buildFollowThePathProgressFromSession(session: GameSessionResult
   return {
     highScore: session.highScore,
     level,
-    levelXp: getLevelXpFromSlots(earnedQuestionSlots, level),
+    levelXp: getTotalEarnedXpFromSlots(earnedQuestionSlots),
     earnedQuestionSlots,
     freeModeUnlocked: session.freeModeUnlocked
   };
@@ -360,7 +372,7 @@ export function writeFollowThePathProgressToBody(
   return {
     [fields.highScore]: game.highScore,
     [fields.level]: String(level),
-    [fields.levelXp]: getLevelXpFromSlots(earnedQuestionSlots, level),
+    [fields.levelXp]: getTotalEarnedXpFromSlots(earnedQuestionSlots),
     [fields.earnedQuestions]: serializeEarnedQuestionSlots(earnedQuestionSlots),
     [fields.freeModeUnlocked]: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned)
   };

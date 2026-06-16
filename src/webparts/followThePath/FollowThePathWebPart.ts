@@ -8,8 +8,12 @@ import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 import * as strings from 'FollowThePathWebPartStrings';
 import { EndlessRunnerGame } from './EndlessRunnerGame';
 import { InMemoryPlayerProgressService } from './InMemoryPlayerProgressService';
+import { InMemoryQuestionsService } from './InMemoryQuestionsService';
 import { SharePointPlayerProgressService } from './SharePointPlayerProgressService';
+import { SharePointQuestionsService } from './SharePointQuestionsService';
 import type { IPlayerProgressService } from './IPlayerProgressService';
+import type { IQuestionsService } from './IQuestionsService';
+import type { Question } from './gameConfig';
 import type { PlayerSession } from './playerProgressTypes';
 
 export interface IFollowThePathWebPartProps {
@@ -18,6 +22,8 @@ export interface IFollowThePathWebPartProps {
   usersListTitle?: string;
   /** Game1Data list — Follow the Path progress (Email links to Users). Defaults to Game1Data. */
   game1DataListTitle?: string;
+  /** Game1Questions list — scenario questions. Defaults to Game1Questions. */
+  questionsListTitle?: string;
 }
 
 export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowThePathWebPartProps> {
@@ -33,20 +39,22 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
       usersListTitle: this.properties.usersListTitle,
       game1DataListTitle: this.properties.game1DataListTitle
     });
+    const questionsService = new SharePointQuestionsService(this.context, {
+      questionsListTitle: this.properties.questionsListTitle
+    });
 
-    progressService
-      .loadSession()
-      .then((session) => {
+    Promise.all([progressService.loadSession(), questionsService.loadQuestions()])
+      .then(([session, questions]) => {
         if (renderGeneration !== this._renderGeneration) {
           return;
         }
 
         if (session.needsRegistration) {
-          this._renderLoginPage(progressService, renderGeneration);
+          this._renderLoginPage(progressService, questionsService, renderGeneration);
           return;
         }
 
-        this._mountGame(progressService, session, renderGeneration);
+        this._mountGame(progressService, session, questions, renderGeneration);
       })
       .catch((error: unknown) => {
         if (renderGeneration !== this._renderGeneration) {
@@ -56,19 +64,20 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
         console.error('[FollowThePath] SharePoint session load failed; using in-memory fallback.', error);
 
         const fallbackService = new InMemoryPlayerProgressService();
-        fallbackService
-          .loadSession()
-          .then((session) => {
+        const fallbackQuestionsService = new InMemoryQuestionsService();
+
+        Promise.all([fallbackService.loadSession(), fallbackQuestionsService.loadQuestions()])
+          .then(([session, questions]) => {
             if (renderGeneration !== this._renderGeneration) {
               return;
             }
 
             if (session.needsRegistration) {
-              this._renderLoginPage(fallbackService, renderGeneration);
+              this._renderLoginPage(fallbackService, fallbackQuestionsService, renderGeneration);
               return;
             }
 
-            this._mountGame(fallbackService, session, renderGeneration);
+            this._mountGame(fallbackService, session, questions, renderGeneration);
           })
           .catch((fallbackError: unknown) => {
             console.error('[FollowThePath] In-memory fallback load failed.', fallbackError);
@@ -76,7 +85,11 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
       });
   }
 
-  private _renderLoginPage(service: IPlayerProgressService, renderGeneration: number): void {
+  private _renderLoginPage(
+    service: IPlayerProgressService,
+    questionsService: IQuestionsService,
+    renderGeneration: number
+  ): void {
     const email = this.context.pageContext.user.email || '';
     const displayName = this.context.pageContext.user.displayName || email;
 
@@ -150,13 +163,14 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
           busu
         })
         .then(() => service.loadSession())
-        .then((session) => {
+        .then((session) => questionsService.loadQuestions().then((questions) => ({ session, questions })))
+        .then(({ session, questions }) => {
           if (renderGeneration !== this._renderGeneration) {
             return;
           }
 
           this.domElement.innerHTML = '';
-          this._mountGame(service, session, renderGeneration);
+          this._mountGame(service, session, questions, renderGeneration);
         })
         .catch((registerError: unknown) => {
           if (renderGeneration !== this._renderGeneration) {
@@ -178,6 +192,7 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
   private _mountGame(
     progressService: IPlayerProgressService,
     session: PlayerSession,
+    questions: Question[],
     renderGeneration: number
   ): void {
     if (renderGeneration !== this._renderGeneration) {
@@ -187,7 +202,8 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
     this._game = new EndlessRunnerGame(this.domElement, {
       fullscreenLayout: this._isFullscreenLayout(),
       progressService,
-      playerProgress: session.progress
+      playerProgress: session.progress,
+      questions
     });
   }
 
@@ -240,6 +256,9 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
                 }),
                 PropertyPaneTextField('game1DataListTitle', {
                   label: 'Game1Data list title'
+                }),
+                PropertyPaneTextField('questionsListTitle', {
+                  label: 'Game1Questions list title'
                 })
               ]
             }

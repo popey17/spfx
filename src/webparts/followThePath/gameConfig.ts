@@ -520,7 +520,7 @@ export const MOBILE_CONTROLS = {
   arrowColor: '#FFFFFF'
 };
 /** Debug collision outlines for the player (red) and obstacles (green). */
-export const SHOW_OBSTACLE_HITBOXES = true;
+export const SHOW_OBSTACLE_HITBOXES = false;
 /** Legacy per-question XP — no longer used for rewards but kept for compatibility. */
 export const XP_PER_QUESTION = 0;
 /** XP granted once per level when all questions in that level are completed. */
