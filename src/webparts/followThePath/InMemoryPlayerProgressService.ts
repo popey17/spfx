@@ -2,26 +2,62 @@ import type { IPlayerProgressService } from './IPlayerProgressService';
 import {
   buildFollowThePathProgressFromSession,
   createDefaultPlayerProgress,
+  createDefaultUserProfile,
   followThePathProgressToRecord,
+  getGame1LevelXpTotals,
+  computeUserTotalXp,
   type GameSessionResult,
-  type PlayerProgressRecord
+  type PlayerSession,
+  type UserProfileRecord,
+  type UserRegistrationInput
 } from './playerProgressTypes';
 
 /** Local fallback when SharePoint progress is unavailable (e.g. workbench). */
 export class InMemoryPlayerProgressService implements IPlayerProgressService {
-  private _record: PlayerProgressRecord = createDefaultPlayerProgress();
+  private _profile: UserProfileRecord | undefined;
+  private _record = createDefaultPlayerProgress();
 
-  public async loadForCurrentUser(): Promise<PlayerProgressRecord> {
+  public async loadSession(): Promise<PlayerSession> {
     return {
-      ...this._record,
-      earnedQuestionSlots: [...this._record.earnedQuestionSlots]
+      profile: this._profile,
+      progress: {
+        ...this._record,
+        earnedQuestionSlots: [...this._record.earnedQuestionSlots]
+      },
+      needsRegistration: !this._profile
     };
   }
 
+  public async registerUser(input: UserRegistrationInput): Promise<UserProfileRecord> {
+    this._profile = {
+      ...createDefaultUserProfile(input.email, input.title),
+      market: input.market,
+      busu: input.busu
+    };
+    return this._profile;
+  }
+
   public async saveAfterGame(session: GameSessionResult): Promise<void> {
-    const totalXp = this._record.totalXp + session.xpGainedThisSession;
-    const totalCoins = this._record.totalCoins + session.coinsCollected;
     const game = buildFollowThePathProgressFromSession(session);
-    this._record = followThePathProgressToRecord(game, totalXp, totalCoins);
+    const totalCoins = (this._profile?.totalCoin || 0) + session.coinsCollected;
+
+    if (this._profile) {
+      const levelXp = getGame1LevelXpTotals(game.earnedQuestionSlots);
+      this._profile = {
+        ...this._profile,
+        totalCoin: totalCoins,
+        game1Level1Xp: levelXp.game1Level1Xp,
+        game1Level2Xp: levelXp.game1Level2Xp,
+        game1Level3Xp: levelXp.game1Level3Xp
+      };
+      this._profile.totalXp = computeUserTotalXp(this._profile);
+    }
+
+    const totalXp = this._profile?.totalXp || 0;
+
+    this._record = followThePathProgressToRecord(game, totalXp, totalCoins, {
+      usersListItemId: this._profile?.listItemId,
+      game1DataListItemId: this._record.game1DataListItemId
+    });
   }
 }

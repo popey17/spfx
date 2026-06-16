@@ -181,31 +181,40 @@ export const GAME_OVER_MENU = {
 };
 
 // =============================================================================
-// PAUSE MENU LAYOUT — same panel style as game over / welcome menu
+// PAUSE MENU LAYOUT — centered stack (icon → title → buttons)
+// All values are 1920×1080 design pixels unless marked (scaled)
 // =============================================================================
 export const PAUSE_MENU = {
-  titleFontSize: 30,
-  titleOffsetY: 40,
+  /** Shift entire pause stack up/down from screen center (negative = higher). */
+  stackOffsetY: 30,
 
+  iconBarWidth: 14,
+  iconBarHeight: 40,
+  iconBarGap: 8,
+  iconColor: '#FFFFFF',
+  titleGapBelowIcon: 18,
+
+  titleText: 'PAUSED',
+  titleFontSize: 36,
+  titleColor: '#FFFFFF',
+  titleGapBelow: 20,
+
+  subtitleText: 'PRESS ESC TO CONTINUE',
   subtitleFontSize: 14,
-  subtitleAboveButtonsOffset: 40,
+  subtitleColor: 'rgba(255, 255, 255, 0.85)',
+  subtitleGapBelow: 32,
+  showSubtitle: false,
 
-  buttonWidth: 280,
-  buttonHeight: 100,
-  buttonGap: 24,
-  buttonBottomOffset: 140,
-  buttonFontSize: 18,
-  buttonRadius: 0,
+  resumeButtonText: 'RESUME',
+  mainMenuButtonText: 'MAIN MENU',
+  showMainMenuButton: true,
+
+  buttonWidth: 200,
+  buttonHeight: 48,
+  buttonGap: 20,
+  buttonFontSize: 20,
   buttonCornerInset: 0,
-  buttonCornerArm: 10,
-
-  mascotShipHeight: 150,
-  mascotShipBottomOffset: 30,
-  mascotShipLeftOffset: -20,
-
-  speechBubbleOffsetX: 200,
-  speechBubbleOffsetY: 70,
-  speechBubbleWidth: 150
+  buttonCornerArm: 10
 };
 
 // =============================================================================

@@ -1,12 +1,17 @@
-import type { GameSessionResult, PlayerProgressRecord } from './playerProgressTypes';
+import type {
+  GameSessionResult,
+  PlayerSession,
+  UserProfileRecord,
+  UserRegistrationInput
+} from './playerProgressTypes';
 
 export interface IPlayerProgressService {
-  /** Load saved progress for the signed-in SharePoint user. */
-  loadForCurrentUser(): Promise<PlayerProgressRecord>;
+  /** Load user profile (Users list) and game progress (Game1Data list). */
+  loadSession(): Promise<PlayerSession>;
 
-  /**
-   * Persist progress after a game ends.
-   * Implementations should upsert the user's list item.
-   */
+  /** Create a new row in the Users list for first-time players. */
+  registerUser(input: UserRegistrationInput): Promise<UserProfileRecord>;
+
+  /** Persist Users totals and Game1Data after a completed game session. */
   saveAfterGame(session: GameSessionResult): Promise<void>;
 }

@@ -2508,18 +2508,92 @@ export class EndlessRunnerGame {
   }
 
   private _getPauseMenuButtonBounds(index: number): { x: number; y: number; width: number; height: number } {
-    const panel = this._getMenuPanelBounds();
-    const content = this._getMenuContentBounds(panel);
-    const totalWidth = PAUSE_MENU.buttonWidth * 2 + PAUSE_MENU.buttonGap;
-    const startX = panel.x + (panel.width - totalWidth) / 2;
-    const y = content.bottom - PAUSE_MENU.buttonHeight - PAUSE_MENU.buttonBottomOffset;
+    const layout = this._getPauseMenuLayout();
+    const button = index === 0 ? layout.resumeButton : layout.mainMenuButton;
+
+    return button;
+  }
+
+  private _getPauseMenuLayout(): {
+    centerX: number;
+    iconY: number;
+    titleY: number;
+    subtitleY: number;
+    resumeButton: { x: number; y: number; width: number; height: number };
+    mainMenuButton: { x: number; y: number; width: number; height: number };
+  } {
+    const centerX = DESIGN_WIDTH / 2;
+    const stackCenterY = DESIGN_HEIGHT / 2 + s(PAUSE_MENU.stackOffsetY);
+    const buttonWidth = s(PAUSE_MENU.buttonWidth);
+    const buttonHeight = s(PAUSE_MENU.buttonHeight);
+    const buttonX = centerX - buttonWidth / 2;
+    const iconHeight = s(PAUSE_MENU.iconBarHeight);
+    const titleBlockHeight = s(PAUSE_MENU.titleFontSize) * 1.15;
+    const subtitleBlockHeight = PAUSE_MENU.showSubtitle ? s(PAUSE_MENU.subtitleFontSize) * 1.35 : 0;
+
+    let stackHeight =
+      iconHeight +
+      s(PAUSE_MENU.titleGapBelowIcon) +
+      titleBlockHeight +
+      s(PAUSE_MENU.titleGapBelow) +
+      buttonHeight;
+
+    if (PAUSE_MENU.showSubtitle) {
+      stackHeight += s(PAUSE_MENU.subtitleGapBelow) + subtitleBlockHeight;
+    }
+
+    if (PAUSE_MENU.showMainMenuButton) {
+      stackHeight += s(PAUSE_MENU.buttonGap) + buttonHeight;
+    }
+
+    let y = stackCenterY - stackHeight / 2;
+    const iconY = y;
+    y += iconHeight + s(PAUSE_MENU.titleGapBelowIcon);
+    const titleY = y;
+    y += titleBlockHeight + s(PAUSE_MENU.titleGapBelow);
+
+    const subtitleY = y;
+    if (PAUSE_MENU.showSubtitle) {
+      y += subtitleBlockHeight + s(PAUSE_MENU.subtitleGapBelow);
+    }
+
+    const resumeButton = {
+      x: buttonX,
+      y,
+      width: buttonWidth,
+      height: buttonHeight
+    };
+
+    const mainMenuButton = {
+      x: buttonX,
+      y: y + buttonHeight + s(PAUSE_MENU.buttonGap),
+      width: buttonWidth,
+      height: buttonHeight
+    };
 
     return {
-      x: startX + index * (PAUSE_MENU.buttonWidth + PAUSE_MENU.buttonGap),
-      y,
-      width: PAUSE_MENU.buttonWidth,
-      height: PAUSE_MENU.buttonHeight
+      centerX,
+      iconY,
+      titleY,
+      subtitleY,
+      resumeButton,
+      mainMenuButton
     };
+  }
+
+  private _drawPauseIcon(centerX: number, y: number): void {
+    const barWidth = s(PAUSE_MENU.iconBarWidth);
+    const barHeight = s(PAUSE_MENU.iconBarHeight);
+    const barGap = s(PAUSE_MENU.iconBarGap);
+    const totalWidth = barWidth * 2 + barGap;
+    const leftX = centerX - totalWidth / 2;
+    const radius = Math.min(barWidth / 2, s(4));
+
+    this._ctx.fillStyle = PAUSE_MENU.iconColor;
+    this._roundRectPath(leftX, y, barWidth, barHeight, radius);
+    this._ctx.fill();
+    this._roundRectPath(leftX + barWidth + barGap, y, barWidth, barHeight, radius);
+    this._ctx.fill();
   }
 
   private _drawMenuButton(
@@ -2951,44 +3025,33 @@ export class EndlessRunnerGame {
     return y + badgeHeight;
   }
 
-  private _drawPauseMascot(): void {
-    const shipHeight = s(PAUSE_MENU.mascotShipHeight);
-    const shipWidth = Math.round(shipHeight * (CHARACTER_SPRITE_NATIVE.width / CHARACTER_SPRITE_NATIVE.height));
-    const shipX = s(PAUSE_MENU.mascotShipLeftOffset);
-    const shipY = DESIGN_HEIGHT - shipHeight - s(PAUSE_MENU.mascotShipBottomOffset);
-
-    if (this._assets) {
-      this._ctx.drawImage(this._assets.character, shipX, shipY, shipWidth, shipHeight);
-    }
-  }
-
   private _drawPauseScreen(): void {
     this._drawMenuBackdrop();
 
     const panel = this._getMenuPanelBounds();
-    const content = this._getMenuContentBounds(panel);
-    const centerX = panel.x + panel.width / 2;
-
     this._drawMenuPanelBackground(panel);
 
-    this._ctx.fillStyle = '#FFFFFF';
+    const layout = this._getPauseMenuLayout();
+
+    this._drawPauseIcon(layout.centerX, layout.iconY);
+
+    this._ctx.fillStyle = PAUSE_MENU.titleColor;
     this._ctx.textAlign = 'center';
     this._ctx.textBaseline = 'top';
     this._ctx.font = menuFont(PAUSE_MENU.titleFontSize);
-    const titleY = content.y + PAUSE_MENU.titleOffsetY;
-    this._ctx.fillText('PAUSED', centerX, titleY);
+    this._ctx.fillText(PAUSE_MENU.titleText, layout.centerX, layout.titleY);
 
-    this._drawMenuButton(this._getPauseMenuButtonBounds(0), 'CONTINUE', PAUSE_MENU.buttonFontSize);
-    this._drawMenuButton(this._getPauseMenuButtonBounds(1), 'MAIN MENU', PAUSE_MENU.buttonFontSize);
+    if (PAUSE_MENU.showSubtitle) {
+      this._ctx.font = menuFont(PAUSE_MENU.subtitleFontSize);
+      this._ctx.fillStyle = PAUSE_MENU.subtitleColor;
+      this._ctx.fillText(PAUSE_MENU.subtitleText, layout.centerX, layout.subtitleY);
+    }
 
-    const buttonTop = this._getPauseMenuButtonBounds(0).y;
-    const subtitleY = buttonTop - PAUSE_MENU.subtitleAboveButtonsOffset - PAUSE_MENU.subtitleFontSize;
+    this._drawMenuButton(layout.resumeButton, PAUSE_MENU.resumeButtonText, PAUSE_MENU.buttonFontSize);
 
-    this._ctx.font = menuFont(PAUSE_MENU.subtitleFontSize);
-    this._ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    this._ctx.fillText('PRESS ESC TO CONTINUE', centerX, subtitleY);
-
-    this._drawPauseMascot();
+    if (PAUSE_MENU.showMainMenuButton) {
+      this._drawMenuButton(layout.mainMenuButton, PAUSE_MENU.mainMenuButtonText, PAUSE_MENU.buttonFontSize);
+    }
 
     if (this._showPauseMainMenuConfirm) {
       this._drawPauseConfirmDialog();

@@ -1,36 +1,43 @@
 import { MAX_QUESTION_LEVEL, QUESTIONS_PER_LEVEL, TOTAL_QUESTION_COUNT, XP_PER_QUESTION } from './gameConfig';
 
 /**
- * Shared SharePoint list — one row per user across ALL games on the site.
- * Each game has its own columns (prefixed). Other games add their own field group.
+ * Users list — one row per player (profile + cross-game totals).
+ * Game1Data list — Follow the Path progress, linked by Email.
  *
- * | Display name                    | Internal name                    | Type             |
- * |---------------------------------|----------------------------------|------------------|
- * | Title                           | Title                            | Single line text |
- * | User Email                      | UserEmail                        | Single line text |
- * | Total XP                        | TotalXp                          | Number           |
- * | Total Coins                     | TotalCoins                       | Number           |
- * | FTP High Score                  | FollowThePath_HighScore          | Number           |
- * | FTP Level                       | FollowThePath_Level              | Number           |
- * | FTP Level XP                    | FollowThePath_LevelXp            | Number           |
- * | FTP Earned Questions            | FollowThePath_EarnedQuestions    | Single line text |
- * | FTP Free Mode                   | FTPFreeMode                      | Yes/No           |
+ * Users columns (SharePoint internal names — do not change the list):
+ * | Title | Email | TotalCoin | MiniQuestXP | MasteryQuestXP |
+ * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
+ * | Game2Level1XP | Game2Level2XP | Game2Level3XP |
  *
- * Example columns for another game (add when that game is built):
- * | Quiz High Score                 | SecurityQuiz_HighScore           | Number           |
+ * TotalXP is computed from level XP columns (not a separate list field).
  *
- * UserEmail identifies the current user (`pageContext.user.email`).
- * TotalXp and TotalCoins are cumulative across every game.
+ * Game1Data columns:
+ * | Email | FollowThePath_HighScore | FollowThePath_Level (Text) | FollowThePath_LevelXp |
+ * | FollowThePath_EarnedQuestions | FTPFreeMode |
  */
-export const SHARED_PLAYER_LIST_CONFIG = {
-  listTitle: 'PlayerGameHub',
-  sharedFields: {
+export const USERS_LIST_CONFIG = {
+  listTitle: 'Users',
+  fields: {
     id: 'Id',
-    userEmail: 'UserEmail',
-    totalXp: 'TotalXp',
-    totalCoins: 'TotalCoins'
-  },
-  followThePath: {
+    title: 'Title',
+    email: 'Email',
+    totalCoin: 'TotalCoin',
+    miniQuestXp: 'MiniQuestXP',
+    masteryQuestXp: 'MasteryQuestXP',
+    game1Level1Xp: 'Game1Level1XP',
+    game1Level2Xp: 'Game1Level2XP',
+    game1Level3Xp: 'Game1Level3XP',
+    game2Level1Xp: 'Game2Level1XP',
+    game2Level2Xp: 'Game2Level2XP',
+    game2Level3Xp: 'Game2Level3XP'
+  }
+} as const;
+
+export const GAME1_DATA_LIST_CONFIG = {
+  listTitle: 'Game1Data',
+  fields: {
+    id: 'Id',
+    email: 'Email',
     highScore: 'FollowThePath_HighScore',
     level: 'FollowThePath_Level',
     levelXp: 'FollowThePath_LevelXp',
@@ -39,8 +46,26 @@ export const SHARED_PLAYER_LIST_CONFIG = {
   }
 } as const;
 
-/** @deprecated Use SHARED_PLAYER_LIST_CONFIG */
-export const PLAYER_PROGRESS_LIST_CONFIG = SHARED_PLAYER_LIST_CONFIG;
+/** @deprecated Use USERS_LIST_CONFIG */
+export const SHARED_PLAYER_LIST_CONFIG = USERS_LIST_CONFIG;
+
+export interface UserProfileRecord {
+  listItemId?: number;
+  title: string;
+  email: string;
+  market: string;
+  busu: string;
+  totalCoin: number;
+  totalXp: number;
+  miniQuestXp: number;
+  masteryQuestXp: number;
+  game1Level1Xp: number;
+  game1Level2Xp: number;
+  game1Level3Xp: number;
+  game2Level1Xp: number;
+  game2Level2Xp: number;
+  game2Level3Xp: number;
+}
 
 export interface FollowThePathProgressData {
   highScore: number;
@@ -50,9 +75,10 @@ export interface FollowThePathProgressData {
   freeModeUnlocked: boolean;
 }
 
-/** Progress for this game, plus shared cross-game totals from the list. */
+/** Progress for this game, plus shared cross-game totals from the Users list. */
 export interface PlayerProgressRecord {
-  listItemId?: number;
+  usersListItemId?: number;
+  game1DataListItemId?: number;
   totalXp: number;
   totalCoins: number;
   highScore: number;
@@ -60,6 +86,19 @@ export interface PlayerProgressRecord {
   levelXp: number;
   earnedQuestionSlots: boolean[];
   freeModeUnlocked: boolean;
+}
+
+export interface PlayerSession {
+  profile: UserProfileRecord | undefined;
+  progress: PlayerProgressRecord;
+  needsRegistration: boolean;
+}
+
+export interface UserRegistrationInput {
+  title: string;
+  email: string;
+  market: string;
+  busu: string;
 }
 
 /** Payload sent to SharePoint after each completed game. */
@@ -91,6 +130,25 @@ export function createDefaultFollowThePathProgress(): FollowThePathProgressData 
   };
 }
 
+export function createDefaultUserProfile(email: string, title: string = ''): UserProfileRecord {
+  return {
+    title: title || email,
+    email,
+    market: '',
+    busu: '',
+    totalCoin: 0,
+    totalXp: 0,
+    miniQuestXp: 0,
+    masteryQuestXp: 0,
+    game1Level1Xp: 0,
+    game1Level2Xp: 0,
+    game1Level3Xp: 0,
+    game2Level1Xp: 0,
+    game2Level2Xp: 0,
+    game2Level3Xp: 0
+  };
+}
+
 export function createDefaultPlayerProgress(): PlayerProgressRecord {
   const game = createDefaultFollowThePathProgress();
   return followThePathProgressToRecord(game, 0, 0);
@@ -119,6 +177,18 @@ export function getLevelXpFromSlots(earnedQuestionSlots: boolean[], level: numbe
   }
 
   return xp;
+}
+
+export function getGame1LevelXpTotals(earnedQuestionSlots: boolean[]): {
+  game1Level1Xp: number;
+  game1Level2Xp: number;
+  game1Level3Xp: number;
+} {
+  return {
+    game1Level1Xp: getLevelXpFromSlots(earnedQuestionSlots, 1),
+    game1Level2Xp: getLevelXpFromSlots(earnedQuestionSlots, 2),
+    game1Level3Xp: getLevelXpFromSlots(earnedQuestionSlots, 3)
+  };
 }
 
 export function parseEarnedQuestionSlots(value: boolean[] | undefined): boolean[] {
@@ -169,12 +239,15 @@ export function serializeEarnedQuestionSlots(earnedQuestionSlots: boolean[]): st
 export function followThePathProgressToRecord(
   game: FollowThePathProgressData,
   totalXp: number,
-  totalCoins: number
+  totalCoins: number,
+  ids?: { usersListItemId?: number; game1DataListItemId?: number }
 ): PlayerProgressRecord {
   const earnedQuestionSlots = parseEarnedQuestionSlots(game.earnedQuestionSlots);
   const level = getProgressLevelFromSlots(earnedQuestionSlots);
 
   return {
+    usersListItemId: ids?.usersListItemId,
+    game1DataListItemId: ids?.game1DataListItemId,
     totalXp,
     totalCoins,
     highScore: game.highScore,
@@ -198,10 +271,58 @@ export function buildFollowThePathProgressFromSession(session: GameSessionResult
   };
 }
 
+export function computeUserTotalXp(profile: Pick<
+  UserProfileRecord,
+  | 'miniQuestXp'
+  | 'masteryQuestXp'
+  | 'game1Level1Xp'
+  | 'game1Level2Xp'
+  | 'game1Level3Xp'
+  | 'game2Level1Xp'
+  | 'game2Level2Xp'
+  | 'game2Level3Xp'
+>): number {
+  return (
+    profile.miniQuestXp +
+    profile.masteryQuestXp +
+    profile.game1Level1Xp +
+    profile.game1Level2Xp +
+    profile.game1Level3Xp +
+    profile.game2Level1Xp +
+    profile.game2Level2Xp +
+    profile.game2Level3Xp
+  );
+}
+
+export function readUserProfileFromListItem(item: Record<string, unknown>): UserProfileRecord {
+  const fields = USERS_LIST_CONFIG.fields;
+
+  const profile: UserProfileRecord = {
+    listItemId: toOptionalId(item[fields.id]),
+    title: String(item[fields.title] || ''),
+    email: String(item[fields.email] || ''),
+    market: '',
+    busu: '',
+    totalCoin: toNumber(item[fields.totalCoin]),
+    totalXp: 0,
+    miniQuestXp: toNumber(item[fields.miniQuestXp]),
+    masteryQuestXp: toNumber(item[fields.masteryQuestXp]),
+    game1Level1Xp: toNumber(item[fields.game1Level1Xp]),
+    game1Level2Xp: toNumber(item[fields.game1Level2Xp]),
+    game1Level3Xp: toNumber(item[fields.game1Level3Xp]),
+    game2Level1Xp: toNumber(item[fields.game2Level1Xp]),
+    game2Level2Xp: toNumber(item[fields.game2Level2Xp]),
+    game2Level3Xp: toNumber(item[fields.game2Level3Xp])
+  };
+
+  profile.totalXp = computeUserTotalXp(profile);
+  return profile;
+}
+
 export function readFollowThePathProgressFromListItem(
   item: Record<string, unknown>
 ): FollowThePathProgressData {
-  const fields = SHARED_PLAYER_LIST_CONFIG.followThePath;
+  const fields = GAME1_DATA_LIST_CONFIG.fields;
   const earnedQuestionSlots = parseEarnedQuestionSlotsFromJson(String(item[fields.earnedQuestions] || ''));
 
   return {
@@ -221,20 +342,81 @@ export function readFollowThePathProgressFromListItem(
 export function writeFollowThePathProgressToBody(
   game: FollowThePathProgressData
 ): Record<string, string | number | boolean> {
-  const fields = SHARED_PLAYER_LIST_CONFIG.followThePath;
+  const fields = GAME1_DATA_LIST_CONFIG.fields;
   const earnedQuestionSlots = parseEarnedQuestionSlots(game.earnedQuestionSlots);
   const level = getProgressLevelFromSlots(earnedQuestionSlots);
 
   return {
     [fields.highScore]: game.highScore,
-    [fields.level]: level,
+    [fields.level]: String(level),
     [fields.levelXp]: getLevelXpFromSlots(earnedQuestionSlots, level),
     [fields.earnedQuestions]: serializeEarnedQuestionSlots(earnedQuestionSlots),
     [fields.freeModeUnlocked]: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned)
   };
 }
 
+export function writeFollowThePathProgressCreateBody(
+  game: FollowThePathProgressData,
+  email: string
+): Record<string, string | number | boolean> {
+  const fields = GAME1_DATA_LIST_CONFIG.fields;
+
+  return {
+    Title: email,
+    [fields.email]: email,
+    ...writeFollowThePathProgressToBody(game)
+  };
+}
+
+export function writeUserTotalsToBody(
+  profile: UserProfileRecord,
+  earnedQuestionSlots: boolean[],
+  coinsCollected: number
+): Record<string, string | number> {
+  const fields = USERS_LIST_CONFIG.fields;
+  const levelXp = getGame1LevelXpTotals(earnedQuestionSlots);
+
+  return {
+    [fields.totalCoin]: profile.totalCoin + coinsCollected,
+    [fields.miniQuestXp]: profile.miniQuestXp,
+    [fields.masteryQuestXp]: profile.masteryQuestXp,
+    [fields.game1Level1Xp]: levelXp.game1Level1Xp,
+    [fields.game1Level2Xp]: levelXp.game1Level2Xp,
+    [fields.game1Level3Xp]: levelXp.game1Level3Xp,
+    [fields.game2Level1Xp]: profile.game2Level1Xp,
+    [fields.game2Level2Xp]: profile.game2Level2Xp,
+    [fields.game2Level3Xp]: profile.game2Level3Xp
+  };
+}
+
+export function writeUserRegistrationBody(input: UserRegistrationInput): Record<string, string | number> {
+  const fields = USERS_LIST_CONFIG.fields;
+
+  return {
+    Title: input.title,
+    [fields.email]: input.email,
+    [fields.totalCoin]: 0,
+    [fields.miniQuestXp]: 0,
+    [fields.masteryQuestXp]: 0,
+    [fields.game1Level1Xp]: 0,
+    [fields.game1Level2Xp]: 0,
+    [fields.game1Level3Xp]: 0,
+    [fields.game2Level1Xp]: 0,
+    [fields.game2Level2Xp]: 0,
+    [fields.game2Level3Xp]: 0
+  };
+}
+
 function toNumber(value: unknown): number {
   const parsed = typeof value === 'number' ? value : parseInt(String(value), 10);
   return isNaN(parsed) ? 0 : parsed;
+}
+
+function toOptionalId(value: unknown): number | undefined {
+  if (typeof value === 'number' && !isNaN(value)) {
+    return value;
+  }
+
+  const parsed = parseInt(String(value), 10);
+  return isNaN(parsed) ? undefined : parsed;
 }
