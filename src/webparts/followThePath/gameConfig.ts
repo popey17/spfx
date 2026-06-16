@@ -1,4 +1,4 @@
-export type GameState = 'waiting' | 'playing' | 'paused' | 'question' | 'countdown' | 'gameover';
+export type GameState = 'waiting' | 'levelIntro' | 'playing' | 'paused' | 'question' | 'countdown' | 'gameover';
 
 export interface Question {
   level: number;
@@ -80,6 +80,7 @@ export interface LoadedAssets {
   buttonBackground: HTMLImageElement;
   buttonCorner: HTMLImageElement;
   pauseButton: HTMLImageElement;
+  arrowUp: HTMLImageElement;
   obstacles: HTMLImageElement[];
   obstacleMeta: SpriteMeta[];
   characterMeta: SpriteMeta;
@@ -87,6 +88,7 @@ export interface LoadedAssets {
   pizzaMeta: SpriteMeta;
   shieldMeta: SpriteMeta;
   pauseButtonMeta: SpriteMeta;
+  arrowUpMeta: SpriteMeta;
   speechBubbleMeta: SpriteMeta;
 }
 
@@ -116,25 +118,15 @@ export const MENU_PANEL = {
 // =============================================================================
 export const WELCOME_MENU = {
   titleFontSize: 30,
-  titleOffsetY: 0,
-
   descriptionFontSize: 12,
-  descriptionOffsetY: 100,
   descriptionLineHeight: 14,
   descriptionWidthInset: 200,
-
   bestScoreFontSize: 10,
-  bestScoreGap: 10,
-
-  startButtonWidth: 350,
-  startButtonHeight: 100,
-  startButtonBottomOffset: 140,
   startButtonFontSize: 20,
   startButtonRadius: 0,
   startButtonCornerInset: 0,
   startButtonCornerArm: 10,
 
-  arrowHintsBottomOffset: 110,
   arrowHintsFontSize: 12,
   arrowKeySize: 28,
   arrowKeyGap: 8,
@@ -149,8 +141,46 @@ export const WELCOME_MENU = {
 
   speechBubbleOffsetX: 200,
   speechBubbleOffsetY: 70,
-  speechBubbleWidth: 150
+  speechBubbleWidth: 150,
+
+  /** First-time / in-progress players (free mode not unlocked). */
+  standard: {
+    titleOffsetY: 80,
+    descriptionOffsetY: 200,
+    bestScoreGap: 60,
+    startButtonWidth: 350,
+    startButtonHeight: 100,
+    startButtonBottomOffset: 200,
+    arrowHintsBottomOffset: 160
+  },
+
+  /** Replay screen after all questions are complete. */
+  freeMode: {
+    titleOffsetY: 0,
+    descriptionOffsetY: 100,
+    startButtonWidth: 300,
+    startButtonHeight: 80,
+    arrowHintsBottomOffset: 110,
+    difficulty: {
+      title: 'CHOOSE YOUR DIFFICULTY',
+      titleFontSize: 14,
+      titleGapBelowDescription: 60,
+      titleGapBelow: 20,
+      buttonWidth: 210,
+      buttonHeight: 52,
+      buttonGap: 14,
+      buttonFontSize: 13,
+      labels: ['EASY', 'INTERMEDIATE', 'ADVANCED'] as const,
+      gapBelowButtons: 56,
+      startButtonGapBelowBestScore: 14,
+      speedByLevel: [1, 1.35, 1.75] as const
+    }
+  }
 };
+
+export function getWelcomeMenuLayout(freeModeUnlocked: boolean): typeof WELCOME_MENU.standard | typeof WELCOME_MENU.freeMode {
+  return freeModeUnlocked ? WELCOME_MENU.freeMode : WELCOME_MENU.standard;
+}
 
 // =============================================================================
 // GAME OVER MENU LAYOUT — same panel style as welcome menu
@@ -262,6 +292,29 @@ export const COUNTDOWN = {
   overlayColor: 'rgba(0, 0, 0, 0.35)',
   fontSize: 120
 };
+
+// =============================================================================
+// LEVEL INTRO — shown at game start and when advancing to the next level
+// =============================================================================
+export const LEVEL_INTRO = {
+  enabled: true,
+  durationMs: 2500,
+  showOnGameStart: true,
+  showOnLevelAdvance: true,
+  stackOffsetY: 0,
+  levelNumberFontSize: 30,
+  levelNameFontSize:36,
+  levelNumberText: (level: number): string => 'LEVEL ' + level,
+  levelNameGap: 12,
+  arrowKeySize: 28,
+  arrowKeyGap: 8,
+  arrowHintsGapBelowName: 48,
+  arrowHintsFontSize: 14,
+  instructionText: 'Use arrow keys to control the spaceship',
+  instructionGapBelowKeys: 10
+};
+
+
 
 export const HIT_GHOST_MODE_MS = 3000;
 export const GHOST_MODE_PULSE = {
@@ -381,6 +434,7 @@ export const HUD_HEIGHT = s(52);
 export const HUD_PADDING = s(16);
 export const PAUSE_BTN_SIZE = s(40);
 export const PAUSE_BTN_NATIVE = { width: 164, height: 164 };
+export const ARROW_KEY_NATIVE = { width: 92, height: 92 };
 export const HEART_SIZE = s(22);
 export const HUD_COIN_SIZE = s(24);
 /** In-game top bar labels and level display. */
@@ -420,6 +474,8 @@ export const GAME_SPEED_INITIAL = 1;
 export const GAME_SPEED_INCREMENT = 0.25;
 export const GAME_SPEED_MAX = 2;
 export const DEBUG_SPAWN_SHIELD_FIRST = false;
+/** Set true to force free mode on the welcome screen (ignores SharePoint progress). */
+export const DEBUG_FORCE_FREE_MODE = true;
 export const SPAWN_RETRY_DELAY_MS = 200;
 export const SPAWN_POSITION_ATTEMPTS = 16;
 export const SPAWN_SEPARATION = s(12);
