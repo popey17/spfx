@@ -2,6 +2,7 @@
 const bgUrl: string = require('./assets/img_bg.png');
 const characterUrl: string = require('./assets/img_character.png');
 const coinUrl: string = require('./assets/img_coin.png');
+const coinSimpleUrl: string = require('./assets/img_coinSimple.png');
 const pizzaUrl: string = require('./assets/img_pizza.png');
 const shieldUrl: string = require('./assets/img_shield.png');
 const menuBgUrl: string = require('./assets/img_menuBg.png');
@@ -10,6 +11,8 @@ const buttonBgUrl: string = require('./assets/buttonBg.png');
 const buttonCornerUrl: string = require('./assets/buttonCorner.png');
 const pauseBtnUrl: string = require('./assets/img_pauseBtn.png');
 const arrowUpUrl: string = require('./assets/img_arrowUp.png');
+const starUrl: string = require('./assets/img_star.png');
+const levelPassRaccoonUrl: string = require('./assets/img_lvlpassRacoon.png');
 const coinSoundUrl: string = require('./assets/sound/coin.mp3');
 const crushSoundUrl: string = require('./assets/sound/crush.mp3');
 const alarmSoundUrl: string = require('./assets/sound/alarm.mp3');
@@ -52,6 +55,7 @@ import {
   COUNTDOWN_MS,
   COUNTDOWN,
   LEVEL_INTRO,
+  LEVEL_COMPLETE,
   HIT_GHOST_MODE_MS,
   GHOST_MODE_PULSE,
   GOD_MODE_HOLO_RING,
@@ -79,9 +83,12 @@ import {
   PAUSE_BTN_SIZE,
   HEART_SIZE,
   HUD_COIN_SIZE,
+  UI_COIN_NATIVE,
   HUD,
   PAUSE_BTN_NATIVE,
   ARROW_KEY_NATIVE,
+  STAR_NATIVE,
+  LEVEL_PASS_RACCOON_NATIVE,
   MOBILE_CONTROLS,
   SHOW_OBSTACLE_HITBOXES,
   WELCOME_ACCENT,
@@ -94,6 +101,7 @@ import {
   GAME_SPEED_MAX,
   DEBUG_SPAWN_SHIELD_FIRST,
   DEBUG_FORCE_FREE_MODE,
+  DEBUG_SHOW_LEVEL_COMPLETE_AT_START,
   SPAWN_RETRY_DELAY_MS,
   SPAWN_POSITION_ATTEMPTS,
   SPAWN_SEPARATION,
@@ -209,6 +217,7 @@ export class EndlessRunnerGame {
   private _answerFeedbackTimerId: number | undefined;
   private _countdownEndsAt: number = 0;
   private _levelIntroEndsAt: number = 0;
+  private _levelStartScore: number = 0;
   private _ghostModeEndsAt: number = 0;
   private _cheatCodeBuffer: string = '';
   private _cheatGodMode: boolean = false;
@@ -349,6 +358,7 @@ export class EndlessRunnerGame {
       this._loadImage(bgUrl),
       this._loadImage(characterUrl),
       this._loadImage(coinUrl),
+      this._loadImage(coinSimpleUrl),
       this._loadImage(pizzaUrl),
       this._loadImage(shieldUrl),
       this._loadImage(menuBgUrl),
@@ -357,12 +367,15 @@ export class EndlessRunnerGame {
       this._loadImage(buttonCornerUrl),
       this._loadImage(pauseBtnUrl),
       this._loadImage(arrowUpUrl),
+      this._loadImage(starUrl),
+      this._loadImage(levelPassRaccoonUrl),
       Promise.all(obstacleUrls.map((url) => this._loadImage(url)))
-    ]).then(([background, character, coin, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, obstacles]) => {
+    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, levelPassRaccoon, obstacles]) => {
       this._assets = {
         background,
         character,
         coin,
+        coinSimple,
         pizza,
         shield,
         menuBackground,
@@ -371,14 +384,19 @@ export class EndlessRunnerGame {
         buttonCorner,
         pauseButton,
         arrowUp,
+        star,
+        levelPassRaccoon,
         obstacles,
         obstacleMeta: OBSTACLE_NATIVE,
         characterMeta: CHARACTER_SPRITE_NATIVE,
         coinMeta: { width: 172, height: 171 },
+        coinSimpleMeta: UI_COIN_NATIVE,
         pizzaMeta: { width: 172, height: 171 },
         shieldMeta: { width: 172, height: 171 },
         pauseButtonMeta: PAUSE_BTN_NATIVE,
         arrowUpMeta: ARROW_KEY_NATIVE,
+        starMeta: STAR_NATIVE,
+        levelPassRaccoonMeta: LEVEL_PASS_RACCOON_NATIVE,
         speechBubbleMeta: { width: 600, height: 321 }
       };
     });
@@ -613,7 +631,14 @@ export class EndlessRunnerGame {
       return false;
     }
 
-    if (this._state === 'countdown' || this._state === 'levelIntro') {
+    if (this._state === 'countdown' || this._state === 'levelIntro' || this._state === 'levelComplete') {
+      if (this._state === 'levelComplete') {
+        if (this._isPointInRect(point.x, point.y, this._getLevelCompleteProceedButtonBounds())) {
+          this._lastCanvasPressAt = now;
+          this._proceedFromLevelComplete();
+          return true;
+        }
+      }
       return false;
     }
 
@@ -707,7 +732,10 @@ export class EndlessRunnerGame {
       return;
     }
 
-    if (this._state === 'levelIntro' || this._state === 'countdown') {
+    if (this._state === 'levelIntro' || this._state === 'countdown' || this._state === 'levelComplete') {
+      if (this._state === 'levelComplete' && (event.key === ' ' || event.key === 'Enter')) {
+        this._proceedFromLevelComplete();
+      }
       return;
     }
 
@@ -844,7 +872,7 @@ export class EndlessRunnerGame {
     this._confettiParticles = [];
     if (this._freeModeUnlocked) {
       this._currentLevel = this._freeModeDifficulty;
-      this._allQuestionsComplete = true;
+      this._allQuestionsComplete = false;
       const speedByLevel = WELCOME_MENU.freeMode.difficulty.speedByLevel;
       const speedIndex = Math.max(0, Math.min(this._freeModeDifficulty - 1, speedByLevel.length - 1));
       this._gameSpeedMultiplier = speedByLevel[speedIndex] ?? GAME_SPEED_INITIAL;
@@ -863,10 +891,19 @@ export class EndlessRunnerGame {
     this._sessionProgressSaving = false;
     this._selectedAnswerIndex = 0;
     this._lastTimestamp = 0;
+    this._levelStartScore = 0;
     this._spawnClockMs = 0;
     this._scheduleSpawns(0);
     this._startGameMusic();
     this._canvas.focus();
+
+    if (DEBUG_SHOW_LEVEL_COMPLETE_AT_START) {
+      this._score = 100;
+      this._sessionXpByLevel[this._currentLevel - 1] = 100;
+      this._answeredInLevel = [true, true, true, true];
+      this._showLevelCompleteScreen();
+      return;
+    }
 
     if (LEVEL_INTRO.enabled && LEVEL_INTRO.showOnGameStart) {
       this._startLevelIntro();
@@ -1035,6 +1072,51 @@ export class EndlessRunnerGame {
     }
 
     return this._cheatPizzaParty ? this._assets.pizza : this._assets.coin;
+  }
+
+  private _getUiCoinDrawRect(
+    slotX: number,
+    slotY: number,
+    slotSize: number
+  ): { x: number; y: number; width: number; height: number } {
+    const meta = this._assets?.coinSimpleMeta ?? UI_COIN_NATIVE;
+    const aspect = meta.width / meta.height;
+
+    if (aspect >= 1) {
+      const width = slotSize;
+      const height = slotSize / aspect;
+      return {
+        x: slotX,
+        y: slotY + (slotSize - height) / 2,
+        width,
+        height
+      };
+    }
+
+    const height = slotSize;
+    const width = slotSize * aspect;
+    return {
+      x: slotX + (slotSize - width) / 2,
+      y: slotY,
+      width,
+      height
+    };
+  }
+
+  private _drawUiCoinIcon(x: number, y: number, size: number): boolean {
+    if (!this._assets?.coinSimple) {
+      return false;
+    }
+
+    const drawRect = this._getUiCoinDrawRect(x, y, size);
+    this._ctx.drawImage(
+      this._assets.coinSimple,
+      drawRect.x,
+      drawRect.y,
+      drawRect.width,
+      drawRect.height
+    );
+    return true;
   }
 
   private _getCollectibleDrawRect(
@@ -1488,20 +1570,57 @@ export class EndlessRunnerGame {
     return this._answeredInLevel.every((answered) => answered);
   }
 
-  private _advanceToNextLevelIfComplete(): void {
-    if (!this._isCurrentLevelComplete()) {
+  private _showLevelCompleteScreen(): void {
+    this._state = 'levelComplete';
+    this._movement = 0;
+    this._clearTouchMovement();
+    this._pauseGameMusic();
+    this._canvas.focus();
+  }
+
+  private _getLevelCoinsEarned(): number {
+    return Math.max(0, this._score - this._levelStartScore);
+  }
+
+  private _getLevelXpEarned(): number {
+    const levelIndex = this._currentLevel - 1;
+    return this._sessionXpByLevel[levelIndex] !== undefined ? this._sessionXpByLevel[levelIndex] : 0;
+  }
+
+  private _proceedFromLevelComplete(): void {
+    if (this._state !== 'levelComplete') {
+      return;
+    }
+
+    if (this._freeModeUnlocked) {
+      this._allQuestionsComplete = true;
+      this._finalizeGameSession();
+      this._goToMainMenu();
+      return;
+    }
+
+    if (this._currentLevel >= MAX_QUESTION_LEVEL) {
+      this._allQuestionsComplete = true;
+      this._finalizeGameSession();
+      this._goToMainMenu();
       return;
     }
 
     this._currentLevel += 1;
-
-    if (this._currentLevel > MAX_QUESTION_LEVEL) {
-      this._allQuestionsComplete = true;
-      return;
-    }
-
     this._lives = MAX_LIVES;
     this._answeredInLevel = [false, false, false, false];
+    this._levelStartScore = this._score;
+    this._obstacles = [];
+    this._coins = [];
+    this._shields = [];
+    this._spawnClockMs = 0;
+    this._scheduleSpawns(performance.now());
+
+    if (LEVEL_INTRO.enabled && LEVEL_INTRO.showOnLevelAdvance) {
+      this._startLevelIntro();
+    } else {
+      this._startCountdown();
+    }
   }
 
   private _startLevelIntro(): void {
@@ -1590,16 +1709,8 @@ export class EndlessRunnerGame {
       this._answerFeedbackTimerId = undefined;
       this._answerFeedback = undefined;
 
-      const levelBefore = this._currentLevel;
-      if (correct) {
-        this._advanceToNextLevelIfComplete();
-      }
-
-      const levelAdvanced =
-        correct && this._currentLevel > levelBefore && !this._allQuestionsComplete;
-
-      if (levelAdvanced && LEVEL_INTRO.enabled && LEVEL_INTRO.showOnLevelAdvance) {
-        this._startLevelIntro();
+      if (correct && this._isCurrentLevelComplete()) {
+        this._showLevelCompleteScreen();
       } else {
         this._startCountdown();
       }
@@ -1768,7 +1879,8 @@ export class EndlessRunnerGame {
       this._canvas.style.cursor = 'pointer';
       this._drawGameOverScreen();
     } else {
-      this._canvas.style.cursor = this._state === 'paused' ? 'pointer' : 'default';
+      this._canvas.style.cursor =
+        this._state === 'paused' || this._state === 'levelComplete' ? 'pointer' : 'default';
       this._drawPlayer(timestamp);
       this._drawObstacles();
       this._drawCoins();
@@ -1790,6 +1902,8 @@ export class EndlessRunnerGame {
       this._drawQuestionScreen();
     } else if (this._state === 'levelIntro') {
       this._drawLevelIntroScreen();
+    } else if (this._state === 'levelComplete') {
+      this._drawLevelCompleteScreen();
     } else if (this._state === 'countdown') {
       this._drawCountdownOverlay(timestamp);
     }
@@ -1864,6 +1978,169 @@ export class EndlessRunnerGame {
       instructionGap: LEVEL_INTRO.instructionGapBelowKeys,
       instructionText: LEVEL_INTRO.instructionText
     });
+  }
+
+  private _getLevelCompleteProceedButtonBounds(): { x: number; y: number; width: number; height: number } {
+    const panel = this._getMenuPanelBounds();
+    const content = this._getMenuContentBounds(panel);
+
+    return {
+      x: panel.x + (panel.width - LEVEL_COMPLETE.proceedButtonWidth) / 2,
+      y: content.bottom - LEVEL_COMPLETE.proceedButtonHeight - LEVEL_COMPLETE.proceedButtonBottomOffset,
+      width: LEVEL_COMPLETE.proceedButtonWidth,
+      height: LEVEL_COMPLETE.proceedButtonHeight
+    };
+  }
+
+  private _getLevelCompleteLayout(): {
+    centerX: number;
+    starY: number;
+    titleY: number;
+    headlineY: number;
+    rewardsY: number;
+  } {
+    const centerX = DESIGN_WIDTH / 2;
+    const button = this._getLevelCompleteProceedButtonBounds();
+    const stackShift = s(LEVEL_COMPLETE.stackOffsetY);
+
+    const starHeight = s(LEVEL_COMPLETE.starSize);
+    const titleHeight = s(LEVEL_COMPLETE.titleFontSize) * 1.2;
+    const headlineHeight = s(LEVEL_COMPLETE.headlineFontSize) * 1.15;
+    const rewardsHeight = s(LEVEL_COMPLETE.rewardsFontSize) * 1.3;
+
+    const rewardsBottom =
+      button.y - s(LEVEL_COMPLETE.rewardsGapAboveProceedButton) + stackShift;
+    const rewardsY = rewardsBottom - rewardsHeight;
+    const headlineY = rewardsY - s(LEVEL_COMPLETE.headlineGapBelow) - headlineHeight;
+    const titleY = headlineY - s(LEVEL_COMPLETE.titleGapBelow) - titleHeight;
+    const starY = titleY - s(LEVEL_COMPLETE.starGapBelow) - starHeight;
+
+    return {
+      centerX,
+      starY,
+      titleY,
+      headlineY,
+      rewardsY
+    };
+  }
+
+  private _drawLevelCompleteRewards(centerX: number, y: number): void {
+    const coinsEarned = this._getLevelCoinsEarned();
+    const xpEarned = this._getLevelXpEarned();
+    const coinIconSize = s(LEVEL_COMPLETE.coinIconSize);
+    const centerY =
+      y + s(LEVEL_COMPLETE.rewardsFontSize) * LEVEL_COMPLETE.rewardsBaselineFactor;
+
+    this._ctx.font = menuFont(LEVEL_COMPLETE.rewardsFontSize);
+    this._ctx.fillStyle = LEVEL_COMPLETE.rewardsColor;
+    this._ctx.textAlign = 'left';
+    this._ctx.textBaseline = 'middle';
+
+    const coinsText = String(coinsEarned);
+    const xpText = LEVEL_COMPLETE.xpRewardPrefix + xpEarned + LEVEL_COMPLETE.xpRewardSuffix;
+    let totalWidth = 0;
+
+    if (LEVEL_COMPLETE.showCoinReward) {
+      totalWidth +=
+        this._ctx.measureText(LEVEL_COMPLETE.coinRewardPrefix).width +
+        coinIconSize +
+        s(4) +
+        this._ctx.measureText(coinsText).width;
+    }
+    if (LEVEL_COMPLETE.showCoinReward && LEVEL_COMPLETE.showXpReward) {
+      totalWidth += s(LEVEL_COMPLETE.rewardsGapBetweenCoinAndXp);
+    }
+    if (LEVEL_COMPLETE.showXpReward) {
+      totalWidth += this._ctx.measureText(xpText).width;
+    }
+
+    let x = centerX - totalWidth / 2;
+
+    if (LEVEL_COMPLETE.showCoinReward) {
+      this._ctx.fillText(LEVEL_COMPLETE.coinRewardPrefix, x, centerY);
+      x += this._ctx.measureText(LEVEL_COMPLETE.coinRewardPrefix).width;
+
+      if (!this._drawUiCoinIcon(x, centerY - coinIconSize / 2, coinIconSize)) {
+        this._ctx.fillStyle = '#FFEB3B';
+        this._ctx.beginPath();
+        this._ctx.arc(x + coinIconSize / 2, centerY, coinIconSize / 2, 0, Math.PI * 2);
+        this._ctx.fill();
+      }
+      x += coinIconSize + s(4);
+      this._ctx.fillText(coinsText, x, centerY);
+      x += this._ctx.measureText(coinsText).width;
+    }
+
+    if (LEVEL_COMPLETE.showCoinReward && LEVEL_COMPLETE.showXpReward) {
+      x += s(LEVEL_COMPLETE.rewardsGapBetweenCoinAndXp);
+    }
+
+    if (LEVEL_COMPLETE.showXpReward) {
+      this._ctx.fillText(xpText, x, centerY);
+    }
+  }
+
+  private _drawLevelCompleteMascot(panel: { x: number; y: number; width: number; height: number }): void {
+    if (!LEVEL_COMPLETE.showMascot || !this._assets?.levelPassRaccoon) {
+      return;
+    }
+
+    const mascotHeight = s(LEVEL_COMPLETE.mascotHeight);
+    const aspect =
+      this._assets.levelPassRaccoonMeta.height / this._assets.levelPassRaccoonMeta.width;
+    const mascotWidth = Math.round(mascotHeight / aspect);
+    const x =
+      panel.x +
+      panel.width -
+      mascotWidth -
+      s(LEVEL_COMPLETE.mascotRightOffset);
+    const y =
+      panel.y +
+      panel.height -
+      mascotHeight -
+      s(LEVEL_COMPLETE.mascotBottomOffset);
+
+    this._ctx.drawImage(this._assets.levelPassRaccoon, x, y, mascotWidth, mascotHeight);
+  }
+
+  private _drawLevelCompleteScreen(): void {
+    this._drawMenuBackdrop();
+
+    const panel = this._getMenuPanelBounds();
+    this._drawMenuPanelBackground(panel);
+
+    const layout = this._getLevelCompleteLayout();
+    const starSize = s(LEVEL_COMPLETE.starSize);
+
+    if (this._assets?.star) {
+      this._ctx.drawImage(
+        this._assets.star,
+        layout.centerX - starSize / 2,
+        layout.starY,
+        starSize,
+        starSize
+      );
+    }
+
+    this._ctx.textAlign = 'center';
+    this._ctx.textBaseline = 'top';
+    this._ctx.font = menuFont(LEVEL_COMPLETE.titleFontSize);
+    this._ctx.fillStyle = LEVEL_COMPLETE.titleColor;
+    this._ctx.fillText(LEVEL_COMPLETE.titleText, layout.centerX, layout.titleY);
+
+    this._ctx.font = menuFont(LEVEL_COMPLETE.headlineFontSize);
+    this._ctx.fillStyle = LEVEL_COMPLETE.headlineColor;
+    this._ctx.fillText(LEVEL_COMPLETE.headlineText, layout.centerX, layout.headlineY);
+
+    this._drawLevelCompleteRewards(layout.centerX, layout.rewardsY);
+
+    this._drawMenuButton(
+      this._getLevelCompleteProceedButtonBounds(),
+      LEVEL_COMPLETE.proceedButtonText,
+      LEVEL_COMPLETE.proceedButtonFontSize
+    );
+
+    this._drawLevelCompleteMascot(panel);
   }
 
   private _drawCountdownOverlay(timestamp: number): void {
@@ -2235,16 +2512,11 @@ export class EndlessRunnerGame {
     x += labelWidth + coinGap;
 
     if (this._assets) {
-      const collectible = this._getCollectibleImage();
-      if (collectible) {
-        const drawRect = this._getCollectibleDrawRect(x, centerY - HUD_COIN_SIZE / 2, HUD_COIN_SIZE);
-        this._ctx.drawImage(
-          collectible,
-          drawRect.x,
-          drawRect.y,
-          drawRect.width,
-          drawRect.height
-        );
+      if (!this._drawUiCoinIcon(x, centerY - HUD_COIN_SIZE / 2, HUD_COIN_SIZE)) {
+        this._ctx.fillStyle = '#FFEB3B';
+        this._ctx.beginPath();
+        this._ctx.arc(x + HUD_COIN_SIZE / 2, centerY, HUD_COIN_SIZE / 2, 0, Math.PI * 2);
+        this._ctx.fill();
       }
     } else {
       this._ctx.fillStyle = '#FFEB3B';
@@ -2519,6 +2791,10 @@ export class EndlessRunnerGame {
   }
 
   private _awardXpForCorrectAnswer(): void {
+    if (this._freeModeUnlocked) {
+      return;
+    }
+
     const globalIndex = this._getGlobalQuestionIndex();
 
     if (this._xpEarnedSlots[globalIndex]) {

@@ -1,4 +1,12 @@
-export type GameState = 'waiting' | 'levelIntro' | 'playing' | 'paused' | 'question' | 'countdown' | 'gameover';
+export type GameState =
+  | 'waiting'
+  | 'levelIntro'
+  | 'playing'
+  | 'paused'
+  | 'question'
+  | 'countdown'
+  | 'levelComplete'
+  | 'gameover';
 
 export interface Question {
   level: number;
@@ -73,6 +81,7 @@ export interface LoadedAssets {
   background: HTMLImageElement;
   character: HTMLImageElement;
   coin: HTMLImageElement;
+  coinSimple: HTMLImageElement;
   pizza: HTMLImageElement;
   shield: HTMLImageElement;
   menuBackground: HTMLImageElement;
@@ -81,14 +90,19 @@ export interface LoadedAssets {
   buttonCorner: HTMLImageElement;
   pauseButton: HTMLImageElement;
   arrowUp: HTMLImageElement;
+  star: HTMLImageElement;
+  levelPassRaccoon: HTMLImageElement;
   obstacles: HTMLImageElement[];
   obstacleMeta: SpriteMeta[];
   characterMeta: SpriteMeta;
   coinMeta: SpriteMeta;
+  coinSimpleMeta: SpriteMeta;
   pizzaMeta: SpriteMeta;
   shieldMeta: SpriteMeta;
   pauseButtonMeta: SpriteMeta;
   arrowUpMeta: SpriteMeta;
+  starMeta: SpriteMeta;
+  levelPassRaccoonMeta: SpriteMeta;
   speechBubbleMeta: SpriteMeta;
 }
 
@@ -314,7 +328,51 @@ export const LEVEL_INTRO = {
   instructionGapBelowKeys: 10
 };
 
+// =============================================================================
+// LEVEL COMPLETE — congrats popup when all questions in a level are answered
+// Uses the same MENU_PANEL frame as welcome / question screens
+// =============================================================================
+export const LEVEL_COMPLETE = {
+  /** Nudge entire content stack up/down (negative = higher). */
+  stackOffsetY: 0,
+  starSize: 60,
+  starGapBelow: 20,
+  titleText: 'CONGRATULATIONS',
+  titleFontSize: 16,
+  titleColor: '#FFFFFF',
+  titleGapBelow: 10,
+  headlineText: 'YOU MADE IT!',
+  headlineFontSize: 32,
+  headlineColor: '#FFFFFF',
+  headlineGapBelow: 16,
+  rewardsFontSize: 18,
+  rewardsColor: '#FFFFFF',
+  coinIconSize: 30,
+  /** Multiplier for vertical alignment of rewards text baseline (higher = lower). */
+  rewardsBaselineFactor: 0.48,
+  showCoinReward: true,
+  showXpReward: true,
+  coinRewardPrefix: '+ ',
+  xpRewardPrefix: '+ ',
+  xpRewardSuffix: ' XP',
+  /** Horizontal gap between coin reward and XP reward. */
+  rewardsGapBetweenCoinAndXp: 16,
+  /** Gap between rewards line and PROCEED button top. */
+  rewardsGapAboveProceedButton: 28,
+  proceedButtonText: 'PROCEED',
+  proceedButtonWidth: 300,
+  proceedButtonHeight: 88,
+  /** Distance from panel content bottom to PROCEED button bottom. */
+  proceedButtonBottomOffset: 50,
+  proceedButtonFontSize: 18,
+  showMascot: true,
+  mascotHeight: 190,
+  mascotRightOffset: 24,
+  mascotBottomOffset: -8
+};
 
+export const STAR_NATIVE = { width: 253, height: 240 };
+export const LEVEL_PASS_RACCOON_NATIVE = { width: 664, height: 886 };
 
 export const HIT_GHOST_MODE_MS = 3000;
 export const GHOST_MODE_PULSE = {
@@ -437,6 +495,7 @@ export const PAUSE_BTN_NATIVE = { width: 164, height: 164 };
 export const ARROW_KEY_NATIVE = { width: 92, height: 92 };
 export const HEART_SIZE = s(22);
 export const HUD_COIN_SIZE = s(24);
+export const UI_COIN_NATIVE = { width: 86, height: 86 };
 /** In-game top bar labels and level display. */
 export const HUD = {
   livesLabel: 'LIVES LEFT:',
@@ -475,7 +534,9 @@ export const GAME_SPEED_INCREMENT = 0.25;
 export const GAME_SPEED_MAX = 2;
 export const DEBUG_SPAWN_SHIELD_FIRST = false;
 /** Set true to force free mode on the welcome screen (ignores SharePoint progress). */
-export const DEBUG_FORCE_FREE_MODE = true;
+export const DEBUG_FORCE_FREE_MODE = false;
+/** Set true to show the level-complete congrats screen immediately when a game starts. */
+export const DEBUG_SHOW_LEVEL_COMPLETE_AT_START = false;
 export const SPAWN_RETRY_DELAY_MS = 200;
 export const SPAWN_POSITION_ATTEMPTS = 16;
 export const SPAWN_SEPARATION = s(12);
