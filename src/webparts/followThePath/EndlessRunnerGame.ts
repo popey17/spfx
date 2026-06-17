@@ -1642,6 +1642,14 @@ export class EndlessRunnerGame {
     return this._getLevelXpRewardForLevel(this._currentLevel);
   }
 
+  private _getLevelCompleteProceedButtonText(): string {
+    if (this._currentLevel >= MAX_QUESTION_LEVEL) {
+      return LEVEL_COMPLETE.playAgainButtonText;
+    }
+
+    return LEVEL_COMPLETE.proceedButtonText;
+  }
+
   private _proceedFromLevelComplete(): void {
     if (this._state !== 'levelComplete') {
       return;
@@ -2196,7 +2204,7 @@ export class EndlessRunnerGame {
 
     this._drawMenuButton(
       this._getLevelCompleteProceedButtonBounds(),
-      LEVEL_COMPLETE.proceedButtonText,
+      this._getLevelCompleteProceedButtonText(),
       LEVEL_COMPLETE.proceedButtonFontSize
     );
 

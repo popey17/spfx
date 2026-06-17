@@ -295,6 +295,42 @@ export function buildFollowThePathProgressFromSession(session: GameSessionResult
   };
 }
 
+export function mergeEarnedQuestionSlots(a: boolean[], b: boolean[]): boolean[] {
+  const merged = createEmptyEarnedQuestionSlots();
+
+  for (let i = 0; i < merged.length; i++) {
+    merged[i] = a[i] === true || b[i] === true;
+  }
+
+  return merged;
+}
+
+/** Combine in-session progress with the latest row from Game1Data before saving. */
+export function mergeFollowThePathProgressForSave(
+  session: FollowThePathProgressData,
+  server: FollowThePathProgressData | undefined
+): FollowThePathProgressData {
+  if (!server) {
+    return session;
+  }
+
+  const earnedQuestionSlots = mergeEarnedQuestionSlots(
+    session.earnedQuestionSlots,
+    server.earnedQuestionSlots
+  );
+
+  return {
+    highScore: Math.max(session.highScore, server.highScore),
+    level: getProgressLevelFromSlots(earnedQuestionSlots),
+    levelXp: getTotalEarnedXpFromSlots(earnedQuestionSlots),
+    earnedQuestionSlots,
+    freeModeUnlocked:
+      session.freeModeUnlocked ||
+      server.freeModeUnlocked ||
+      earnedQuestionSlots.every((earned) => earned)
+  };
+}
+
 export function computeUserTotalXp(profile: Pick<
   UserProfileRecord,
   | 'miniQuestXp'
@@ -409,9 +445,9 @@ export function writeUserTotalsToBody(
     [fields.totalCoin]: profile.totalCoin + coinsCollected,
     [fields.miniQuestXp]: profile.miniQuestXp,
     [fields.masteryQuestXp]: profile.masteryQuestXp,
-    [fields.game1Level1Xp]: levelXp.game1Level1Xp,
-    [fields.game1Level2Xp]: levelXp.game1Level2Xp,
-    [fields.game1Level3Xp]: levelXp.game1Level3Xp,
+    [fields.game1Level1Xp]: Math.max(profile.game1Level1Xp, levelXp.game1Level1Xp),
+    [fields.game1Level2Xp]: Math.max(profile.game1Level2Xp, levelXp.game1Level2Xp),
+    [fields.game1Level3Xp]: Math.max(profile.game1Level3Xp, levelXp.game1Level3Xp),
     [fields.game2Level1Xp]: profile.game2Level1Xp,
     [fields.game2Level2Xp]: profile.game2Level2Xp,
     [fields.game2Level3Xp]: profile.game2Level3Xp

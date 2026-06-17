@@ -360,6 +360,7 @@ export const LEVEL_COMPLETE = {
   /** Gap between rewards line and PROCEED button top. */
   rewardsGapAboveProceedButton: 28,
   proceedButtonText: 'PROCEED',
+  playAgainButtonText: 'PLAY AGAIN',
   proceedButtonWidth: 300,
   proceedButtonHeight: 88,
   /** Distance from panel content bottom to PROCEED button bottom. */
@@ -536,11 +537,16 @@ export const GAME_SPEED_INCREMENT = 0.25;
 export const GAME_SPEED_MAX = 2;
 export const DEBUG_SPAWN_SHIELD_FIRST = false;
 /** Set true to auto-collect question shields as soon as they appear on screen. */
-export const DEBUG_AUTO_COLLECT_SHIELDS = false;
+export const DEBUG_AUTO_COLLECT_SHIELDS = true;
 /** Set true to force free mode on the welcome screen (ignores SharePoint progress). */
 export const DEBUG_FORCE_FREE_MODE = false;
 /** Set true to show the level-complete congrats screen immediately when a game starts. */
 export const DEBUG_SHOW_LEVEL_COMPLETE_AT_START = false;
+/**
+ * Set true to allow ?user=email@example.com to load/save progress for that user
+ * instead of the signed-in SharePoint account (debug / QA only).
+ */
+export const DEBUG_ALLOW_URL_USER_OVERRIDE = true;
 export const SPAWN_RETRY_DELAY_MS = 200;
 export const SPAWN_POSITION_ATTEMPTS = 16;
 export const SPAWN_SEPARATION = s(12);

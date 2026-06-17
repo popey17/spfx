@@ -11,6 +11,7 @@ import { InMemoryPlayerProgressService } from './InMemoryPlayerProgressService';
 import { InMemoryQuestionsService } from './InMemoryQuestionsService';
 import { SharePointPlayerProgressService } from './SharePointPlayerProgressService';
 import { SharePointQuestionsService } from './SharePointQuestionsService';
+import { getDebugUserEmailFromUrl } from './debugUserOverride';
 import type { IPlayerProgressService } from './IPlayerProgressService';
 import type { IQuestionsService } from './IQuestionsService';
 import type { Question } from './gameConfig';
@@ -37,7 +38,8 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
     const renderGeneration = ++this._renderGeneration;
     const progressService = new SharePointPlayerProgressService(this.context, {
       usersListTitle: this.properties.usersListTitle,
-      game1DataListTitle: this.properties.game1DataListTitle
+      game1DataListTitle: this.properties.game1DataListTitle,
+      debugUserEmail: getDebugUserEmailFromUrl()
     });
     const questionsService = new SharePointQuestionsService(this.context, {
       questionsListTitle: this.properties.questionsListTitle
@@ -90,7 +92,7 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
     questionsService: IQuestionsService,
     renderGeneration: number
   ): void {
-    const email = this.context.pageContext.user.email || '';
+    const email = getDebugUserEmailFromUrl() || this.context.pageContext.user.email || '';
     const displayName = this.context.pageContext.user.displayName || email;
 
     const wrapper = document.createElement('div');

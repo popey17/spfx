@@ -18,6 +18,8 @@ import {
   createEmptyEarnedQuestionSlots,
   serializeEarnedQuestionSlots,
   computeUserTotalXp,
+  mergeFollowThePathProgressForSave,
+  type FollowThePathProgressData,
   type GameSessionResult,
   type PlayerSession,
   type UserProfileRecord,
@@ -27,6 +29,8 @@ import {
 export interface SharePointPlayerProgressServiceOptions {
   usersListTitle?: string;
   game1DataListTitle?: string;
+  /** Debug only — load/save as this user instead of the signed-in account. */
+  debugUserEmail?: string;
 }
 
 /**
@@ -37,6 +41,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
   private readonly _context: WebPartContext;
   private readonly _usersListTitle: string;
   private readonly _game1DataListTitle: string;
+  private readonly _debugUserEmail: string | undefined;
   private _profile: UserProfileRecord | undefined;
   private _game1DataListItemId: number | undefined;
 
@@ -44,6 +49,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     this._context = context;
     this._usersListTitle = options.usersListTitle || USERS_LIST_CONFIG.listTitle;
     this._game1DataListTitle = options.game1DataListTitle || GAME1_DATA_LIST_CONFIG.listTitle;
+    this._debugUserEmail = options.debugUserEmail;
   }
 
   public async loadSession(): Promise<PlayerSession> {
@@ -115,14 +121,16 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       return;
     }
 
-    await this._ensureProfileLoaded(email);
-    await this._ensureGame1DataRow(email);
+    const serverGameProgress = await this._refreshLatestFromList(email);
 
     if (!this._profile) {
       return;
     }
 
-    const followThePath = buildFollowThePathProgressFromSession(session);
+    await this._ensureGame1DataRow(email);
+
+    const sessionProgress = buildFollowThePathProgressFromSession(session);
+    const followThePath = mergeFollowThePathProgressForSave(sessionProgress, serverGameProgress);
     const usersBody = writeUserTotalsToBody(
       this._profile,
       followThePath.earnedQuestionSlots,
@@ -154,13 +162,28 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     this._profile.totalXp = computeUserTotalXp(this._profile);
   }
 
-  private async _ensureProfileLoaded(email: string): Promise<void> {
-    if (this._profile) {
-      return;
+  private async _refreshLatestFromList(
+    email: string
+  ): Promise<FollowThePathProgressData | undefined> {
+    const userItem = await this._fetchUsersListItem(email);
+
+    if (!userItem) {
+      this._profile = undefined;
+      this._game1DataListItemId = undefined;
+      return undefined;
     }
 
-    const userItem = await this._fetchUsersListItem(email);
-    this._profile = userItem ? readUserProfileFromListItem(userItem) : undefined;
+    this._profile = readUserProfileFromListItem(userItem);
+
+    const gameItem = await this._fetchGame1DataListItem(email);
+
+    if (!gameItem) {
+      this._game1DataListItemId = undefined;
+      return undefined;
+    }
+
+    this._game1DataListItemId = this._toOptionalId(gameItem[GAME1_DATA_LIST_CONFIG.fields.id]);
+    return readFollowThePathProgressFromListItem(gameItem);
   }
 
   private async _ensureGame1DataRow(email: string): Promise<void> {
@@ -310,6 +333,10 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
   }
 
   private _getCurrentEmail(): string {
+    if (this._debugUserEmail) {
+      return this._debugUserEmail;
+    }
+
     return this._context.pageContext.user.email || '';
   }
 
