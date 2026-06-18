@@ -12,6 +12,8 @@ const buttonCornerUrl: string = require('./assets/buttonCorner.png');
 const pauseBtnUrl: string = require('./assets/img_pauseBtn.png');
 const arrowUpUrl: string = require('./assets/img_arrowUp.png');
 const starUrl: string = require('./assets/img_star.png');
+const heartUrl: string = require('./assets/img_heart.png');
+const heartLostUrl: string = require('./assets/img_heartLost.png');
 const levelPassRaccoonUrl: string = require('./assets/img_lvlpassRacoon.png');
 const coinSoundUrl: string = require('./assets/sound/coin.mp3');
 const crushSoundUrl: string = require('./assets/sound/crush.mp3');
@@ -375,9 +377,11 @@ export class EndlessRunnerGame {
       this._loadImage(pauseBtnUrl),
       this._loadImage(arrowUpUrl),
       this._loadImage(starUrl),
+      this._loadImage(heartUrl),
+      this._loadImage(heartLostUrl),
       this._loadImage(levelPassRaccoonUrl),
       Promise.all(obstacleUrls.map((url) => this._loadImage(url)))
-    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, levelPassRaccoon, obstacles]) => {
+    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, heart, heartLost, levelPassRaccoon, obstacles]) => {
       this._assets = {
         background,
         character,
@@ -392,6 +396,8 @@ export class EndlessRunnerGame {
         pauseButton,
         arrowUp,
         star,
+        heart,
+        heartLost,
         levelPassRaccoon,
         obstacles,
         obstacleMeta: OBSTACLE_NATIVE,
@@ -2752,6 +2758,13 @@ export class EndlessRunnerGame {
 
   private _drawHeart(x: number, y: number, filled: boolean): void {
     const size = HEART_SIZE;
+    const image = filled ? this._assets?.heart : this._assets?.heartLost;
+
+    if (image) {
+      this._ctx.drawImage(image, x, y, size, size);
+      return;
+    }
+
     const ctx = this._ctx;
 
     ctx.save();

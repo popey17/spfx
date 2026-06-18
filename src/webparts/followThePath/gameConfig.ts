@@ -91,6 +91,8 @@ export interface LoadedAssets {
   pauseButton: HTMLImageElement;
   arrowUp: HTMLImageElement;
   star: HTMLImageElement;
+  heart: HTMLImageElement;
+  heartLost: HTMLImageElement;
   levelPassRaccoon: HTMLImageElement;
   obstacles: HTMLImageElement[];
   obstacleMeta: SpriteMeta[];
@@ -368,8 +370,8 @@ export const LEVEL_COMPLETE = {
   proceedButtonFontSize: 18,
   showMascot: true,
   mascotHeight: 190,
-  mascotRightOffset: 24,
-  mascotBottomOffset: -8
+  mascotRightOffset: -10,
+  mascotBottomOffset: 20
 };
 
 export const STAR_NATIVE = { width: 253, height: 240 };
@@ -537,7 +539,7 @@ export const GAME_SPEED_INCREMENT = 0.25;
 export const GAME_SPEED_MAX = 2;
 export const DEBUG_SPAWN_SHIELD_FIRST = false;
 /** Set true to auto-collect question shields as soon as they appear on screen. */
-export const DEBUG_AUTO_COLLECT_SHIELDS = true;
+export const DEBUG_AUTO_COLLECT_SHIELDS = false;
 /** Set true to force free mode on the welcome screen (ignores SharePoint progress). */
 export const DEBUG_FORCE_FREE_MODE = false;
 /** Set true to show the level-complete congrats screen immediately when a game starts. */
@@ -547,6 +549,8 @@ export const DEBUG_SHOW_LEVEL_COMPLETE_AT_START = false;
  * instead of the signed-in SharePoint account (debug / QA only).
  */
 export const DEBUG_ALLOW_URL_USER_OVERRIDE = true;
+/** Set true to skip Users list check and play with in-memory progress (local testing only). */
+export const DEBUG_SKIP_USER_CHECK = true;
 export const SPAWN_RETRY_DELAY_MS = 200;
 export const SPAWN_POSITION_ATTEMPTS = 16;
 export const SPAWN_SEPARATION = s(12);
