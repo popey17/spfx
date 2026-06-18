@@ -533,12 +533,16 @@ export const WELCOME_PANEL_FILL = 'rgba(28, 32, 42, 0.9)';
 export const MUSIC_VOLUME = 0.35;
 export const SFX_VOLUME = 0.7;
 
-export const SHIELD_SPAWN_INTERVAL_MS = 15000;
+export const QUESTION_INTERVAL_MS = 15000;
+export const SHIELD_SPAWN_MIN_MS = 10000;
+export const SHIELD_SPAWN_MAX_MS = 20000;
+/** @deprecated Use SHIELD_SPAWN_MIN_MS / SHIELD_SPAWN_MAX_MS */
+export const SHIELD_SPAWN_INTERVAL_MS = QUESTION_INTERVAL_MS;
 export const GAME_SPEED_INITIAL = 1;
 export const GAME_SPEED_INCREMENT = 0.25;
 export const GAME_SPEED_MAX = 2;
 export const DEBUG_SPAWN_SHIELD_FIRST = false;
-/** Set true to auto-collect question shields as soon as they appear on screen. */
+/** Set true to auto-collect shield pickups and grant the power-up shield. */
 export const DEBUG_AUTO_COLLECT_SHIELDS = false;
 /** Set true to force free mode on the welcome screen (ignores SharePoint progress). */
 export const DEBUG_FORCE_FREE_MODE = false;

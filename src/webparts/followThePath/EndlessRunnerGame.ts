@@ -97,7 +97,9 @@ import {
   WELCOME_PANEL_FILL,
   MUSIC_VOLUME,
   SFX_VOLUME,
-  SHIELD_SPAWN_INTERVAL_MS,
+  QUESTION_INTERVAL_MS,
+  SHIELD_SPAWN_MIN_MS,
+  SHIELD_SPAWN_MAX_MS,
   GAME_SPEED_INITIAL,
   GAME_SPEED_INCREMENT,
   GAME_SPEED_MAX,
@@ -186,7 +188,10 @@ export class EndlessRunnerGame {
   private _confettiParticles: ConfettiParticle[] = [];
   private _nextObstacleAt: number = 0;
   private _nextCoinAt: number = 0;
-  private _nextShieldAt: number = 0;
+  private _questionTimerMs: number = 0;
+  private _shieldTimerMs: number = 0;
+  private _nextShieldSpawnDelayMs: number = SHIELD_SPAWN_MIN_MS;
+  private _powerShieldActive: boolean = false;
   private _spawnClockMs: number = 0;
   private _gameSpeedMultiplier: number = GAME_SPEED_INITIAL;
   private _currentLevel: number = 1;
@@ -860,6 +865,7 @@ export class EndlessRunnerGame {
     this._clearTouchMovement();
     this._showPauseMainMenuConfirm = false;
     this._resetCheats();
+    this._powerShieldActive = false;
     this._obstacles = [];
     this._coins = [];
     this._shields = [];
@@ -903,6 +909,12 @@ export class EndlessRunnerGame {
     this._activeQuestionInLevelIndex = 0;
     this._obstaclePenalty = 0;
     this._ghostModeEndsAt = 0;
+    this._powerShieldActive = false;
+    this._questionTimerMs = 0;
+    this._shieldTimerMs = 0;
+    this._nextShieldSpawnDelayMs = DEBUG_SPAWN_SHIELD_FIRST
+      ? 0
+      : this._randomBetween(SHIELD_SPAWN_MIN_MS, SHIELD_SPAWN_MAX_MS);
     this._sessionXpByLevel = [0, 0, 0];
     this._sessionProgressSaved = false;
     this._sessionProgressSaving = false;
@@ -933,16 +945,11 @@ export class EndlessRunnerGame {
   private _scheduleSpawns(spawnClockMs: number): void {
     this._nextObstacleAt = spawnClockMs + this._randomBetween(OBSTACLE_SPAWN_MIN_MS, OBSTACLE_SPAWN_MAX_MS);
     this._nextCoinAt = spawnClockMs + this._randomBetween(500, 1200);
-    this._nextShieldAt = DEBUG_SPAWN_SHIELD_FIRST ? spawnClockMs : spawnClockMs + this._getQuestionSpawnIntervalMs();
   }
 
   private _getEffectiveSpeedMultiplier(): number {
     const cheatMultiplier = this._cheatTurbo ? CHEAT_TURBO_MULTIPLIER : 1;
     return this._gameSpeedMultiplier * cheatMultiplier;
-  }
-
-  private _getQuestionSpawnIntervalMs(): number {
-    return SHIELD_SPAWN_INTERVAL_MS * this._gameSpeedMultiplier;
   }
 
   private _increaseGameSpeedAfterQuestion(): void {
@@ -1000,7 +1007,68 @@ export class EndlessRunnerGame {
       this._attractCoins(frameScale);
     }
     this._cleanupEntities();
+    this._updateQuestionTimer(delta);
+    this._updateShieldSpawns(delta);
     this._checkCollisions(timestamp);
+  }
+
+  private _updateQuestionTimer(delta: number): void {
+    if (!this._hasRemainingQuestionsInCurrentLevel()) {
+      return;
+    }
+
+    this._questionTimerMs += delta;
+
+    if (this._questionTimerMs >= QUESTION_INTERVAL_MS) {
+      this._questionTimerMs = 0;
+      this._showQuestion();
+    }
+  }
+
+  private _updateShieldSpawns(delta: number): void {
+    this._shieldTimerMs += delta;
+
+    if (this._shieldTimerMs < this._nextShieldSpawnDelayMs) {
+      return;
+    }
+
+    this._shieldTimerMs = 0;
+    this._nextShieldSpawnDelayMs = this._randomBetween(SHIELD_SPAWN_MIN_MS, SHIELD_SPAWN_MAX_MS);
+
+    if (!this._trySpawnShieldCollectible()) {
+      this._shieldTimerMs = this._nextShieldSpawnDelayMs - SPAWN_RETRY_DELAY_MS;
+    }
+  }
+
+  private _trySpawnShieldCollectible(): boolean {
+    const spawnX = DESIGN_WIDTH + SHIELD_DISPLAY_SIZE;
+    const maxY = this._playableTop() + this._playableHeight() - SHIELD_DISPLAY_SIZE;
+    const spawnY = this._findNonOverlappingY(
+      spawnX,
+      SHIELD_DISPLAY_SIZE,
+      SHIELD_DISPLAY_SIZE,
+      this._playableTop(),
+      maxY
+    );
+
+    if (spawnY === undefined) {
+      return false;
+    }
+
+    this._shields.push({
+      x: spawnX,
+      y: spawnY,
+      width: SHIELD_DISPLAY_SIZE,
+      height: SHIELD_DISPLAY_SIZE,
+      speed: SCROLL_SPEED
+    });
+
+    return true;
+  }
+
+  private _grantPowerShield(): void {
+    this._powerShieldActive = true;
+    this._playSfx(this._correctSound);
   }
 
   private _getCollisionCenter(
@@ -1313,31 +1381,6 @@ export class EndlessRunnerGame {
         this._nextCoinAt = gameTimeMs + SPAWN_RETRY_DELAY_MS;
       }
     }
-
-    if (gameTimeMs >= this._nextShieldAt && this._hasRemainingQuestionsInCurrentLevel()) {
-      const spawnX = DESIGN_WIDTH + SHIELD_DISPLAY_SIZE;
-      const maxY = this._playableTop() + this._playableHeight() - SHIELD_DISPLAY_SIZE;
-      const spawnY = this._findNonOverlappingY(
-        spawnX,
-        SHIELD_DISPLAY_SIZE,
-        SHIELD_DISPLAY_SIZE,
-        this._playableTop(),
-        maxY
-      );
-
-      if (spawnY !== undefined) {
-        this._shields.push({
-          x: spawnX,
-          y: spawnY,
-          width: SHIELD_DISPLAY_SIZE,
-          height: SHIELD_DISPLAY_SIZE,
-          speed: SCROLL_SPEED
-        });
-        this._nextShieldAt = gameTimeMs + this._getQuestionSpawnIntervalMs();
-      } else {
-        this._nextShieldAt = gameTimeMs + SPAWN_RETRY_DELAY_MS;
-      }
-    }
   }
 
   private _rectsOverlap(
@@ -1436,7 +1479,7 @@ export class EndlessRunnerGame {
   private _checkCollisions(timestamp: number): void {
     if (DEBUG_AUTO_COLLECT_SHIELDS && this._shields.length > 0) {
       this._shields.splice(0, this._shields.length);
-      this._showQuestion();
+      this._grantPowerShield();
       return;
     }
 
@@ -1472,6 +1515,12 @@ export class EndlessRunnerGame {
         this._spawnExplosion(impact.x, impact.y, timestamp);
 
         if (cheatGodModeActive) {
+          return;
+        }
+
+        if (this._powerShieldActive) {
+          this._powerShieldActive = false;
+          this._playSfx(this._correctSound);
           return;
         }
 
@@ -1518,7 +1567,7 @@ export class EndlessRunnerGame {
 
       if (dx * dx + dy * dy < hitRadius * hitRadius) {
         this._shields.splice(k, 1);
-        this._showQuestion();
+        this._grantPowerShield();
         return;
       }
     }
@@ -1687,6 +1736,10 @@ export class EndlessRunnerGame {
     this._obstacles = [];
     this._coins = [];
     this._shields = [];
+    this._powerShieldActive = false;
+    this._questionTimerMs = 0;
+    this._shieldTimerMs = 0;
+    this._nextShieldSpawnDelayMs = this._randomBetween(SHIELD_SPAWN_MIN_MS, SHIELD_SPAWN_MAX_MS);
     this._spawnClockMs = 0;
     this._scheduleSpawns(0);
 
@@ -1722,6 +1775,7 @@ export class EndlessRunnerGame {
     }
 
     this._state = 'playing';
+    this._questionTimerMs = 0;
     this._lastTimestamp = 0;
     this._canvas.focus();
   }
@@ -2425,12 +2479,40 @@ export class EndlessRunnerGame {
       this._drawGodModeHoloRing(drawX, drawY);
     }
 
+    if (this._powerShieldActive) {
+      this._drawPowerShieldAura(drawX, drawY);
+    }
+
     if (SHOW_OBSTACLE_HITBOXES) {
       const hitbox = this._getPlayerHitbox();
       this._ctx.strokeStyle = '#FF0000';
       this._ctx.lineWidth = s(2);
       this._ctx.strokeRect(hitbox.x, hitbox.y, hitbox.width, hitbox.height);
     }
+  }
+
+  private _drawPowerShieldAura(drawX: number, drawY: number): void {
+    const size = Math.round(SHIELD_DISPLAY_SIZE * 0.72);
+    const shieldX = drawX + (this._playerWidth - size) / 2;
+    const shieldY = drawY - size * 0.18;
+
+    this._ctx.save();
+    this._ctx.globalAlpha = 0.92;
+
+    if (this._assets) {
+      this._ctx.drawImage(this._assets.shield, shieldX, shieldY, size, size);
+    } else {
+      this._ctx.fillStyle = '#4FC3F7';
+      this._ctx.beginPath();
+      this._ctx.moveTo(shieldX + size / 2, shieldY);
+      this._ctx.lineTo(shieldX + size, shieldY + size * 0.55);
+      this._ctx.lineTo(shieldX + size / 2, shieldY + size);
+      this._ctx.lineTo(shieldX, shieldY + size * 0.55);
+      this._ctx.closePath();
+      this._ctx.fill();
+    }
+
+    this._ctx.restore();
   }
 
   private _drawObstacles(): void {
