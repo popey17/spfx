@@ -564,7 +564,7 @@ export const DEBUG_SHOW_LEVEL_COMPLETE_AT_START = false;
  */
 export const DEBUG_ALLOW_URL_USER_OVERRIDE = true;
 /** Set true to skip Users list check and play with in-memory progress (local testing only). */
-export const DEBUG_SKIP_USER_CHECK = true;
+export const DEBUG_SKIP_USER_CHECK = false;
 export const SPAWN_RETRY_DELAY_MS = 200;
 export const SPAWN_POSITION_ATTEMPTS = 16;
 export const SPAWN_SEPARATION = s(12);
