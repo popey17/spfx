@@ -31,8 +31,8 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
   public async registerUser(input: UserRegistrationInput): Promise<UserProfileRecord> {
     this._profile = {
       ...createDefaultUserProfile(input.email, input.title),
-      market: input.market,
-      busu: input.busu
+      lobt: input.lobt,
+      market: input.market
     };
     return this._profile;
   }

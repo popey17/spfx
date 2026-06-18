@@ -1,8 +1,8 @@
 import { DEBUG_ALLOW_URL_USER_OVERRIDE } from './gameConfig';
 
 /**
- * Debug-only: ?user=test@gmail.com or ?user=%22test@gmail.com%22
- * Returns undefined when the flag is off or the parameter is missing/invalid.
+ * Debug/QA fallback: ?user=test@gmail.com when ?email= is not set.
+ * Requires DEBUG_ALLOW_URL_USER_OVERRIDE. Production uses ?email= instead.
  */
 export function getDebugUserEmailFromUrl(): string | undefined {
   if (!DEBUG_ALLOW_URL_USER_OVERRIDE || typeof window === 'undefined') {

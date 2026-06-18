@@ -10,6 +10,7 @@ import {
   GAME1_DATA_LIST_CONFIG,
   readFollowThePathProgressFromListItem,
   readUserProfileFromListItem,
+  isUserProfileComplete,
   USERS_LIST_CONFIG,
   writeFollowThePathProgressCreateBody,
   writeFollowThePathProgressToBody,
@@ -29,8 +30,8 @@ import {
 export interface SharePointPlayerProgressServiceOptions {
   usersListTitle?: string;
   game1DataListTitle?: string;
-  /** Debug only — load/save as this user instead of the signed-in account. */
-  debugUserEmail?: string;
+  /** Email for Users/Game1Data lookup (?email= URL param or signed-in user). */
+  lookupEmail?: string;
 }
 
 /**
@@ -41,7 +42,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
   private readonly _context: WebPartContext;
   private readonly _usersListTitle: string;
   private readonly _game1DataListTitle: string;
-  private readonly _debugUserEmail: string | undefined;
+  private readonly _lookupEmail: string;
   private _profile: UserProfileRecord | undefined;
   private _game1DataListItemId: number | undefined;
 
@@ -49,7 +50,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     this._context = context;
     this._usersListTitle = options.usersListTitle || USERS_LIST_CONFIG.listTitle;
     this._game1DataListTitle = options.game1DataListTitle || GAME1_DATA_LIST_CONFIG.listTitle;
-    this._debugUserEmail = options.debugUserEmail;
+    this._lookupEmail = options.lookupEmail || context.pageContext.user.email || '';
   }
 
   public async loadSession(): Promise<PlayerSession> {
@@ -96,7 +97,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
           game1DataListItemId: this._game1DataListItemId
         }
       ),
-      needsRegistration: false
+      needsRegistration: !isUserProfileComplete(this._profile)
     };
   }
 
@@ -104,8 +105,8 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     const created = await this._createListItem(this._usersListTitle, writeUserRegistrationBody(input));
     this._profile = {
       ...readUserProfileFromListItem(created),
-      market: input.market,
-      busu: input.busu
+      lobt: input.lobt,
+      market: input.market
     };
     this._game1DataListItemId = undefined;
 
@@ -175,6 +176,17 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
 
     this._profile = readUserProfileFromListItem(userItem);
 
+    if (!isUserProfileComplete(this._profile)) {
+      console.warn(
+        '[FollowThePath] User profile is incomplete (LOBT and Market are required).',
+        {
+          email: this._profile.email,
+          lobt: this._profile.lobt,
+          market: this._profile.market
+        }
+      );
+    }
+
     const gameItem = await this._fetchGame1DataListItem(email);
 
     if (!gameItem) {
@@ -212,14 +224,13 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     this._game1DataListItemId = this._toOptionalId(created[fields.id]);
   }
 
-  private _getUsersSelectFields(): string[] {
+  private _getUsersScalarSelectFields(): string[] {
     const fields = USERS_LIST_CONFIG.fields;
     return [
       fields.id,
       fields.title,
       fields.email,
       fields.totalCoin,
-      fields.totalXp,
       fields.miniQuestXp,
       fields.masteryQuestXp,
       fields.game1Level1Xp,
@@ -229,6 +240,68 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       fields.game2Level2Xp,
       fields.game2Level3Xp
     ];
+  }
+
+  private async _fetchUsersListItem(email: string): Promise<Record<string, unknown> | undefined> {
+    const baseItem = await this._fetchListItemByEmail(
+      this._usersListTitle,
+      USERS_LIST_CONFIG.fields.email,
+      this._getUsersScalarSelectFields(),
+      email
+    );
+
+    if (!baseItem) {
+      return undefined;
+    }
+
+    const itemId = this._toOptionalId(baseItem[USERS_LIST_CONFIG.fields.id]);
+    if (itemId === undefined) {
+      return baseItem;
+    }
+
+    const profileFields = await this._fetchUsersProfileFields(itemId);
+    return {
+      ...baseItem,
+      ...profileFields
+    };
+  }
+
+  /**
+   * Market is a lookup column — it cannot appear in $select without $expand.
+   * LOBT may be choice or lookup, so we try a few safe query shapes.
+   */
+  private async _fetchUsersProfileFields(itemId: number): Promise<Record<string, unknown>> {
+    const fields = USERS_LIST_CONFIG.fields;
+    const attempts: Array<{ select: string; expand: string }> = [
+      {
+        select: `${fields.lobt},${fields.market}/Title`,
+        expand: fields.market
+      },
+      {
+        select: `${fields.lobt}/Title,${fields.market}/Title`,
+        expand: `${fields.lobt},${fields.market}`
+      }
+    ];
+
+    for (let i = 0; i < attempts.length; i++) {
+      const attempt = attempts[i];
+      const url =
+        `${this._context.pageContext.web.absoluteUrl}` +
+        `/_api/web/lists/getbytitle('${this._escapeODataString(this._usersListTitle)}')/items(${itemId})` +
+        `?$select=${encodeURIComponent(attempt.select)}&$expand=${encodeURIComponent(attempt.expand)}`;
+
+      const response: SPHttpClientResponse = await this._context.spHttpClient.get(
+        url,
+        SPHttpClient.configurations.v1
+      );
+
+      if (response.ok) {
+        return (await response.json()) as Record<string, unknown>;
+      }
+    }
+
+    console.warn('[FollowThePath] Could not read LOBT/Market for user profile.');
+    return {};
   }
 
   private _getGame1DataSelectFields(): string[] {
@@ -242,10 +315,6 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       fields.earnedQuestions,
       fields.freeModeUnlocked
     ];
-  }
-
-  private async _fetchUsersListItem(email: string): Promise<Record<string, unknown> | undefined> {
-    return this._fetchListItemByEmail(this._usersListTitle, USERS_LIST_CONFIG.fields.email, this._getUsersSelectFields(), email);
   }
 
   private async _fetchGame1DataListItem(email: string): Promise<Record<string, unknown> | undefined> {
@@ -263,7 +332,58 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     selectFields: string[],
     email: string
   ): Promise<Record<string, unknown> | undefined> {
-    const filter = encodeURIComponent(`${emailField} eq '${this._escapeODataString(email)}'`);
+    const trimmedEmail = email.trim();
+    const filterExpressions: string[] = [
+      `${emailField} eq '${this._escapeODataString(trimmedEmail)}'`
+    ];
+
+    const lowerEmail = trimmedEmail.toLowerCase();
+    if (lowerEmail !== trimmedEmail) {
+      filterExpressions.push(`${emailField} eq '${this._escapeODataString(lowerEmail)}'`);
+    }
+
+    const selectVariants: string[][] = [selectFields];
+
+    // If a column in $select is invalid, retry with a minimal field set.
+    const minimalSelect = [emailField, 'Id'];
+    if (selectFields.join(',') !== minimalSelect.join(',')) {
+      selectVariants.push(minimalSelect);
+    }
+
+    for (let f = 0; f < filterExpressions.length; f++) {
+      for (let s = 0; s < selectVariants.length; s++) {
+        const item = await this._queryListItemByFilter(
+          listTitle,
+          filterExpressions[f],
+          selectVariants[s]
+        );
+
+        if (item) {
+          if (s > 0) {
+            // Enrich minimal row with the full field set when possible.
+            const itemId = this._toOptionalId(item.Id);
+            if (itemId !== undefined && selectFields.length > minimalSelect.length) {
+              const enriched = await this._queryListItemById(listTitle, itemId, selectFields);
+              if (enriched) {
+                return enriched;
+              }
+            }
+          }
+
+          return item;
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  private async _queryListItemByFilter(
+    listTitle: string,
+    filterExpression: string,
+    selectFields: string[]
+  ): Promise<Record<string, unknown> | undefined> {
+    const filter = encodeURIComponent(filterExpression);
     const select = encodeURIComponent(selectFields.join(','));
     const url =
       `${this._context.pageContext.web.absoluteUrl}` +
@@ -276,11 +396,46 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     );
 
     if (!response.ok) {
-      throw new Error(await this._readSharePointError(response, `Failed to load list "${listTitle}".`));
+      if (response.status === 401 || response.status === 403 || response.status >= 500) {
+        throw new Error(await this._readSharePointError(response, `Failed to load list "${listTitle}".`));
+      }
+
+      console.warn(
+        '[FollowThePath] List filter query failed; trying next strategy.',
+        await this._readSharePointError(response, `List "${listTitle}".`)
+      );
+      return undefined;
     }
 
     const payload = (await response.json()) as { value?: Array<Record<string, unknown>> };
     return payload.value && payload.value.length > 0 ? payload.value[0] : undefined;
+  }
+
+  private async _queryListItemById(
+    listTitle: string,
+    itemId: number,
+    selectFields: string[]
+  ): Promise<Record<string, unknown> | undefined> {
+    const select = encodeURIComponent(selectFields.join(','));
+    const url =
+      `${this._context.pageContext.web.absoluteUrl}` +
+      `/_api/web/lists/getbytitle('${this._escapeODataString(listTitle)}')/items(${itemId})` +
+      `?$select=${select}`;
+
+    const response: SPHttpClientResponse = await this._context.spHttpClient.get(
+      url,
+      SPHttpClient.configurations.v1
+    );
+
+    if (!response.ok) {
+      console.warn(
+        '[FollowThePath] Could not load list item fields by id.',
+        await this._readSharePointError(response, `List "${listTitle}".`)
+      );
+      return undefined;
+    }
+
+    return (await response.json()) as Record<string, unknown>;
   }
 
   private async _createListItem(
@@ -333,11 +488,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
   }
 
   private _getCurrentEmail(): string {
-    if (this._debugUserEmail) {
-      return this._debugUserEmail;
-    }
-
-    return this._context.pageContext.user.email || '';
+    return this._lookupEmail;
   }
 
   private async _readSharePointError(response: SPHttpClientResponse, fallback: string): Promise<string> {

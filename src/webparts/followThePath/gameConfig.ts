@@ -545,12 +545,12 @@ export const DEBUG_FORCE_FREE_MODE = false;
 /** Set true to show the level-complete congrats screen immediately when a game starts. */
 export const DEBUG_SHOW_LEVEL_COMPLETE_AT_START = false;
 /**
- * Set true to allow ?user=email@example.com to load/save progress for that user
- * instead of the signed-in SharePoint account (debug / QA only).
+ * Set true to allow ?user=email@example.com as a fallback when ?email= is not set (debug / QA only).
+ * Production flow uses ?email= from Register.aspx redirect.
  */
 export const DEBUG_ALLOW_URL_USER_OVERRIDE = true;
 /** Set true to skip Users list check and play with in-memory progress (local testing only). */
-export const DEBUG_SKIP_USER_CHECK = true;
+export const DEBUG_SKIP_USER_CHECK = false;
 export const SPAWN_RETRY_DELAY_MS = 200;
 export const SPAWN_POSITION_ATTEMPTS = 16;
 export const SPAWN_SEPARATION = s(12);

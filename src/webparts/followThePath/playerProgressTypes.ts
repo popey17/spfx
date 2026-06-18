@@ -10,7 +10,7 @@ import {
  * Game1Data list — Follow the Path progress, linked by Email.
  *
  * Users columns (SharePoint internal names — do not change the list):
- * | Title | Email | TotalCoin | MiniQuestXP | MasteryQuestXP |
+ * | Title | Email | LOBT | Market | TotalCoin | MiniQuestXP | MasteryQuestXP |
  * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
  * | Game2Level1XP | Game2Level2XP | Game2Level3XP |
  *
@@ -28,6 +28,8 @@ export const USERS_LIST_CONFIG = {
     id: 'Id',
     title: 'Title',
     email: 'Email',
+    lobt: 'LOBT',
+    market: 'Market',
     totalCoin: 'TotalCoin',
     totalXp: 'TotalXP',
     miniQuestXp: 'MiniQuestXP',
@@ -61,8 +63,8 @@ export interface UserProfileRecord {
   listItemId?: number;
   title: string;
   email: string;
+  lobt: string;
   market: string;
-  busu: string;
   totalCoin: number;
   totalXp: number;
   miniQuestXp: number;
@@ -105,8 +107,8 @@ export interface PlayerSession {
 export interface UserRegistrationInput {
   title: string;
   email: string;
+  lobt: string;
   market: string;
-  busu: string;
 }
 
 /** Payload sent to SharePoint after each completed game. */
@@ -142,8 +144,8 @@ export function createDefaultUserProfile(email: string, title: string = ''): Use
   return {
     title: title || email,
     email,
+    lobt: '',
     market: '',
-    busu: '',
     totalCoin: 0,
     totalXp: 0,
     miniQuestXp: 0,
@@ -160,6 +162,39 @@ export function createDefaultUserProfile(email: string, title: string = ''): Use
 export function createDefaultPlayerProgress(): PlayerProgressRecord {
   const game = createDefaultFollowThePathProgress();
   return followThePathProgressToRecord(game, 0, 0);
+}
+
+export function isUserProfileComplete(profile: Pick<UserProfileRecord, 'lobt' | 'market'>): boolean {
+  return profile.lobt.trim().length > 0 && profile.market.trim().length > 0;
+}
+
+function readListTextValue(item: Record<string, unknown>, ...keys: string[]): string {
+  for (let i = 0; i < keys.length; i++) {
+    const value = item[keys[i]];
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>;
+      const nested = record.Title ?? record.Value ?? record.Label ?? record.title;
+      if (nested !== undefined && nested !== null) {
+        const text = String(nested).trim();
+        if (text.length > 0) {
+          return text;
+        }
+      }
+
+      continue;
+    }
+
+    const text = String(value).trim();
+    if (text.length > 0) {
+      return text;
+    }
+  }
+
+  return '';
 }
 
 export function getProgressLevelFromSlots(earnedQuestionSlots: boolean[]): number {
@@ -361,8 +396,8 @@ export function readUserProfileFromListItem(item: Record<string, unknown>): User
     listItemId: toOptionalId(item[fields.id]),
     title: String(item[fields.title] || ''),
     email: String(item[fields.email] || ''),
-    market: '',
-    busu: '',
+    lobt: readListTextValue(item, fields.lobt, 'LOBT', 'lobt'),
+    market: readListTextValue(item, fields.market, 'Market', 'market'),
     totalCoin: toNumber(item[fields.totalCoin]),
     totalXp: 0,
     miniQuestXp: toNumber(item[fields.miniQuestXp]),

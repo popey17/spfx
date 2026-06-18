@@ -8,11 +8,15 @@ import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 import * as strings from 'FollowThePathWebPartStrings';
 import { EndlessRunnerGame } from './EndlessRunnerGame';
 import { InMemoryPlayerProgressService } from './InMemoryPlayerProgressService';
-import { InMemoryQuestionsService } from './InMemoryQuestionsService';
 import { SharePointPlayerProgressService } from './SharePointPlayerProgressService';
 import { SharePointQuestionsService } from './SharePointQuestionsService';
 import { getDebugUserEmailFromUrl } from './debugUserOverride';
-import { redirectToRegisterPage } from './registrationRedirect';
+import {
+  redirectToRegisterPage,
+  isNoRedirectFromUrl,
+  resolveActiveUserEmail,
+  syncGamePageUrlParams
+} from './registrationRedirect';
 import type { IPlayerProgressService } from './IPlayerProgressService';
 import type { Question } from './gameConfig';
 import { DEBUG_SKIP_USER_CHECK } from './gameConfig';
@@ -38,10 +42,11 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
     this._disposeGame();
     this.domElement.innerHTML = '';
     const renderGeneration = ++this._renderGeneration;
+    const lookupEmail = this._resolveActiveUserEmail();
     const progressService = new SharePointPlayerProgressService(this.context, {
       usersListTitle: this.properties.usersListTitle,
       game1DataListTitle: this.properties.game1DataListTitle,
-      debugUserEmail: getDebugUserEmailFromUrl()
+      lookupEmail
     });
     const questionsService = new SharePointQuestionsService(this.context, {
       questionsListTitle: this.properties.questionsListTitle
@@ -53,85 +58,131 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
           return;
         }
 
-        if (session.needsRegistration) {
-          if (this._tryMountWithoutUserCheck(progressService, session, questions, renderGeneration)) {
-            return;
-          }
-
-          redirectToRegisterPage();
-          return;
-        }
-
-        this._mountGame(progressService, session, questions, renderGeneration);
+        this._handleLoadedSession(progressService, session, questions, renderGeneration);
       })
       .catch((error: unknown) => {
         if (renderGeneration !== this._renderGeneration) {
           return;
         }
 
-        console.error('[FollowThePath] SharePoint session load failed; using in-memory fallback.', error);
+        console.error('[FollowThePath] SharePoint progress load failed.', error);
 
-        const fallbackService = new InMemoryPlayerProgressService();
-        const fallbackQuestionsService = new InMemoryQuestionsService();
-
-        Promise.all([fallbackService.loadSession(), fallbackQuestionsService.loadQuestions()])
-          .then(([session, questions]) => {
-            if (renderGeneration !== this._renderGeneration) {
-              return;
-            }
-
-            if (session.needsRegistration) {
-              if (this._tryMountWithoutUserCheck(fallbackService, session, questions, renderGeneration)) {
+        if (isNoRedirectFromUrl() || DEBUG_SKIP_USER_CHECK) {
+          const fallbackService = new InMemoryPlayerProgressService();
+          fallbackService
+            .loadSession()
+            .then((session) =>
+              questionsService.loadQuestions().then((questions) => ({ session, questions }))
+            )
+            .then(({ session, questions }) => {
+              if (renderGeneration !== this._renderGeneration) {
                 return;
               }
 
-              redirectToRegisterPage();
-              return;
-            }
+              this._tryMountWithoutRegistration(fallbackService, session, questions, renderGeneration);
+            })
+            .catch((fallbackError: unknown) => {
+              console.error('[FollowThePath] Fallback load failed.', fallbackError);
+            });
+          return;
+        }
 
-            this._mountGame(fallbackService, session, questions, renderGeneration);
-          })
-          .catch((fallbackError: unknown) => {
-            console.error('[FollowThePath] In-memory fallback load failed.', fallbackError);
-          });
+        this.domElement.innerHTML =
+          '<p style="padding:16px;font-family:Segoe UI,sans-serif;">' +
+          'Unable to load your player profile. Please refresh the page or try again later.' +
+          '</p>';
       });
   }
 
-  private _tryMountWithoutUserCheck(
+  private _handleLoadedSession(
+    progressService: IPlayerProgressService,
+    session: PlayerSession,
+    questions: Question[],
+    renderGeneration: number
+  ): void {
+    if (session.needsRegistration) {
+      if (this._tryMountWithoutRegistration(progressService, session, questions, renderGeneration)) {
+        return;
+      }
+
+      redirectToRegisterPage(this._getRegistrationEmail(session));
+      return;
+    }
+
+    this._mountGame(progressService, session, questions, renderGeneration, isNoRedirectFromUrl());
+  }
+
+  private _tryMountWithoutRegistration(
     progressService: IPlayerProgressService,
     session: PlayerSession,
     questions: Question[],
     renderGeneration: number
   ): boolean {
-    if (!DEBUG_SKIP_USER_CHECK) {
+    const noRedirect = isNoRedirectFromUrl();
+
+    if (!DEBUG_SKIP_USER_CHECK && !noRedirect) {
       return false;
     }
 
-    console.warn('[FollowThePath] DEBUG_SKIP_USER_CHECK: skipping Users list check for local testing.');
+    if (noRedirect) {
+      console.warn('[FollowThePath] noredirect URL parameter: skipping registration redirect.');
+    } else {
+      console.warn('[FollowThePath] DEBUG_SKIP_USER_CHECK: skipping Users list check for local testing.');
+    }
 
-    const localSession: PlayerSession = {
-      profile: session.profile,
-      progress: createDefaultPlayerProgress(),
-      needsRegistration: false
-    };
+    if (DEBUG_SKIP_USER_CHECK || !session.profile) {
+      const localSession: PlayerSession = {
+        profile: session.profile,
+        progress: createDefaultPlayerProgress(),
+        needsRegistration: false
+      };
 
-    const localProgressService =
-      progressService instanceof SharePointPlayerProgressService
-        ? new InMemoryPlayerProgressService()
-        : progressService;
+      const localProgressService =
+        progressService instanceof SharePointPlayerProgressService
+          ? new InMemoryPlayerProgressService()
+          : progressService;
 
-    this._mountGame(localProgressService, localSession, questions, renderGeneration);
+      this._mountGame(localProgressService, localSession, questions, renderGeneration, noRedirect);
+      return true;
+    }
+
+    this._mountGame(
+      progressService,
+      {
+        ...session,
+        needsRegistration: false
+      },
+      questions,
+      renderGeneration,
+      noRedirect
+    );
     return true;
+  }
+
+  private _resolveActiveUserEmail(): string {
+    return resolveActiveUserEmail(
+      this.context.pageContext.user.email || '',
+      getDebugUserEmailFromUrl()
+    );
+  }
+
+  private _getRegistrationEmail(session: PlayerSession): string {
+    return session.profile?.email || this._resolveActiveUserEmail();
   }
 
   private _mountGame(
     progressService: IPlayerProgressService,
     session: PlayerSession,
     questions: Question[],
-    renderGeneration: number
+    renderGeneration: number,
+    skipUrlSync: boolean
   ): void {
     if (renderGeneration !== this._renderGeneration) {
       return;
+    }
+
+    if (!skipUrlSync) {
+      syncGamePageUrlParams();
     }
 
     this._game = new EndlessRunnerGame(this.domElement, {
