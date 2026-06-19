@@ -14,6 +14,7 @@ const arrowUpUrl: string = require('./assets/img_arrowUp.png');
 const starUrl: string = require('./assets/img_star.png');
 const heartUrl: string = require('./assets/img_heart.png');
 const heartLostUrl: string = require('./assets/img_heartLost.png');
+const storeBgUrl: string = require('./assets/img_storeBg.png');
 const levelPassRaccoonUrl: string = require('./assets/img_lvlpassRacoon.png');
 const backBtnUrl: string = require('./assets/img_back.png');
 const muteBtnUrl: string = require('./assets/img_mute.png');
@@ -120,6 +121,8 @@ import {
   DEBUG_FORCE_ZERO_HEARTS,
   MAIN_SHOP_MENU,
   GAME_OVER_SHOP_MENU,
+  STORE_BG_NATIVE,
+  type ShopMenuConfig,
   DEBUG_SHOW_LEVEL_COMPLETE_AT_START,
   SPAWN_RETRY_DELAY_MS,
   SPAWN_POSITION_ATTEMPTS,
@@ -425,12 +428,13 @@ export class EndlessRunnerGame {
       this._loadImage(starUrl),
       this._loadImage(heartUrl),
       this._loadImage(heartLostUrl),
+      this._loadImage(storeBgUrl),
       this._loadImage(levelPassRaccoonUrl),
       this._loadImage(backBtnUrl),
       this._loadImage(muteBtnUrl),
       this._loadImage(soundBtnUrl),
       Promise.all(obstacleUrls.map((url) => this._loadImage(url)))
-    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, heart, heartLost, levelPassRaccoon, backButton, muteButton, soundButton, obstacles]) => {
+    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, heart, heartLost, storeBackground, levelPassRaccoon, backButton, muteButton, soundButton, obstacles]) => {
       this._assets = {
         background,
         character,
@@ -447,6 +451,7 @@ export class EndlessRunnerGame {
         star,
         heart,
         heartLost,
+        storeBackground,
         levelPassRaccoon,
         backButton,
         muteButton,
@@ -461,6 +466,7 @@ export class EndlessRunnerGame {
         pauseButtonMeta: PAUSE_BTN_NATIVE,
         arrowUpMeta: ARROW_KEY_NATIVE,
         starMeta: STAR_NATIVE,
+        storeBackgroundMeta: STORE_BG_NATIVE,
         levelPassRaccoonMeta: LEVEL_PASS_RACCOON_NATIVE,
         backButtonMeta: BACK_BTN_NATIVE,
         muteButtonMeta: MUTE_BTN_NATIVE,
@@ -676,11 +682,11 @@ export class EndlessRunnerGame {
       const buyCount = MAIN_SHOP_MENU.buyOptions.length;
 
       if (index < buyCount) {
-        return this._getMainShopPriceButtonBounds(index);
+        return this._getShopPriceButtonBounds(MAIN_SHOP_MENU, index);
       }
 
       if (index === buyCount) {
-        return this._getMainShopBackButtonBounds();
+        return this._getShopFooterButtonBounds(MAIN_SHOP_MENU);
       }
 
       return undefined;
@@ -743,7 +749,14 @@ export class EndlessRunnerGame {
     if (this._state === 'gameover') {
       if (this._gameOverShowsShop) {
         const buyCount = GAME_OVER_SHOP_MENU.buyOptions.length;
+
         if (index < buyCount) {
+          this._tryShopPurchase(GAME_OVER_SHOP_MENU, index, () => {
+            if (this._dailyHeartsRemaining > 0) {
+              this._gameOverShowsShop = false;
+              this._tryStartGame();
+            }
+          });
           return;
         }
 
@@ -798,7 +811,11 @@ export class EndlessRunnerGame {
       const buyCount = MAIN_SHOP_MENU.buyOptions.length;
 
       if (index < buyCount) {
-        this._tryMainShopPurchase(index);
+        this._tryShopPurchase(MAIN_SHOP_MENU, index, () => {
+          if (this._dailyHeartsRemaining > 0) {
+            this._closeShop();
+          }
+        });
         return;
       }
 
@@ -979,14 +996,18 @@ export class EndlessRunnerGame {
       const buyCount = MAIN_SHOP_MENU.buyOptions.length;
 
       for (let i = 0; i < buyCount; i++) {
-        if (this._isPointInRect(point.x, point.y, this._getMainShopPriceButtonBounds(i))) {
+        if (this._isPointInRect(point.x, point.y, this._getShopPriceButtonBounds(MAIN_SHOP_MENU, i))) {
           this._lastCanvasPressAt = now;
-          this._tryMainShopPurchase(i);
+          this._tryShopPurchase(MAIN_SHOP_MENU, i, () => {
+            if (this._dailyHeartsRemaining > 0) {
+              this._closeShop();
+            }
+          });
           return true;
         }
       }
 
-      if (this._isPointInRect(point.x, point.y, this._getMainShopBackButtonBounds())) {
+      if (this._isPointInRect(point.x, point.y, this._getShopFooterButtonBounds(MAIN_SHOP_MENU))) {
         this._lastCanvasPressAt = now;
         this._closeShop();
         return true;
@@ -1311,8 +1332,8 @@ export class EndlessRunnerGame {
     this._canvas.focus();
   }
 
-  private _canPurchaseMainShopOption(index: number): boolean {
-    const option = MAIN_SHOP_MENU.buyOptions[index];
+  private _canPurchaseShopOption(menu: ShopMenuConfig, index: number): boolean {
+    const option = menu.buyOptions[index];
 
     if (!option) {
       return false;
@@ -1325,10 +1346,10 @@ export class EndlessRunnerGame {
     return this._dailyHeartsRemaining + option.hearts <= MAX_LIVES;
   }
 
-  private _tryMainShopPurchase(index: number): void {
-    const option = MAIN_SHOP_MENU.buyOptions[index];
+  private _tryShopPurchase(menu: ShopMenuConfig, index: number, onSuccess?: () => void): void {
+    const option = menu.buyOptions[index];
 
-    if (!option || this._shopPurchaseSaving || !this._canPurchaseMainShopOption(index)) {
+    if (!option || this._shopPurchaseSaving || !this._canPurchaseShopOption(menu, index)) {
       return;
     }
 
@@ -1353,10 +1374,7 @@ export class EndlessRunnerGame {
         this._dailyHeartsRemaining = nextHearts;
         this._totalCoins = Math.max(0, this._totalCoins - coinCost);
         this._shopPurchaseSaving = false;
-
-        if (this._dailyHeartsRemaining > 0) {
-          this._closeShop();
-        }
+        onSuccess?.();
       })
       .catch((error: unknown) => {
         this._shopPurchaseSaving = false;
@@ -4429,76 +4447,47 @@ export class EndlessRunnerGame {
 
     const buyCount = GAME_OVER_SHOP_MENU.buyOptions.length;
     if (index < buyCount) {
-      return this._getGameOverShopBuyButtonBounds(index);
+      return this._getShopPriceButtonBounds(GAME_OVER_SHOP_MENU, index);
     }
 
     if (index === buyCount) {
-      return this._getGameOverShopMainMenuButtonBounds();
+      return this._getShopFooterButtonBounds(GAME_OVER_SHOP_MENU);
     }
 
     return undefined;
   }
 
-  private _getGameOverShopMainMenuButtonBounds(): {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } {
-    const panel = this._getMenuPanelBounds();
-    const centerX = panel.x + panel.width / 2;
-
-    return {
-      x: centerX - GAME_OVER_SHOP_MENU.mainMenuButtonWidth / 2,
-      y:
-        panel.y +
-        panel.height -
-        GAME_OVER_SHOP_MENU.mainMenuButtonBottomOffset -
-        GAME_OVER_SHOP_MENU.mainMenuButtonHeight,
-      width: GAME_OVER_SHOP_MENU.mainMenuButtonWidth,
-      height: GAME_OVER_SHOP_MENU.mainMenuButtonHeight
-    };
-  }
-
-  private _getGameOverShopBuyButtonBounds(index: number): {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } {
-    const panel = this._getMenuPanelBounds();
-    const centerX = panel.x + panel.width / 2;
-    const mainMenuButton = this._getGameOverShopMainMenuButtonBounds();
-    const buyCount = GAME_OVER_SHOP_MENU.buyOptions.length;
-    const stackHeight =
-      buyCount * GAME_OVER_SHOP_MENU.buyButtonHeight +
-      (buyCount - 1) * GAME_OVER_SHOP_MENU.buyButtonGap;
-    const startY =
-      mainMenuButton.y -
-      GAME_OVER_SHOP_MENU.buyButtonsGapAboveMainMenu -
-      stackHeight +
-      index * (GAME_OVER_SHOP_MENU.buyButtonHeight + GAME_OVER_SHOP_MENU.buyButtonGap);
-
-    return {
-      x: centerX - GAME_OVER_SHOP_MENU.buyButtonWidth / 2,
-      y: startY,
-      width: GAME_OVER_SHOP_MENU.buyButtonWidth,
-      height: GAME_OVER_SHOP_MENU.buyButtonHeight
-    };
-  }
-
-  private _getMainShopRowTopY(index: number): number {
+  private _getShopRowTopY(menu: ShopMenuConfig, index: number): number {
     const panel = this._getMenuPanelBounds();
     const content = this._getMenuContentBounds(panel);
 
     return (
       content.y +
-      MAIN_SHOP_MENU.rowsStartOffsetY +
-      index * (MAIN_SHOP_MENU.rowHeight + MAIN_SHOP_MENU.rowGap)
+      menu.rowsStartOffsetY +
+      index * (menu.rowHeight + menu.rowGap)
     );
   }
 
-  private _getMainShopPriceButtonBounds(index: number): {
+  private _getShopPriceButtonBounds(
+    menu: ShopMenuConfig,
+    index: number
+  ): { x: number; y: number; width: number; height: number } {
+    const panel = this._getMenuPanelBounds();
+    const centerX = panel.x + panel.width / 2;
+    const rowTop = this._getShopRowTopY(menu, index);
+    const rowWidth = s(menu.rowWidth);
+    const buttonWidth = s(menu.priceButtonWidth);
+    const buttonHeight = s(menu.priceButtonHeight);
+
+    return {
+      x: centerX + rowWidth / 2 - buttonWidth,
+      y: rowTop + (s(menu.rowHeight) - buttonHeight) / 2,
+      width: buttonWidth,
+      height: buttonHeight
+    };
+  }
+
+  private _getShopFooterButtonBounds(menu: ShopMenuConfig): {
     x: number;
     y: number;
     width: number;
@@ -4506,97 +4495,92 @@ export class EndlessRunnerGame {
   } {
     const panel = this._getMenuPanelBounds();
     const centerX = panel.x + panel.width / 2;
-    const rowTop = this._getMainShopRowTopY(index);
-    const rowWidth = s(MAIN_SHOP_MENU.rowWidth);
-    const buttonWidth = s(MAIN_SHOP_MENU.priceButtonWidth);
-    const buttonHeight = s(MAIN_SHOP_MENU.priceButtonHeight);
 
     return {
-      x: centerX + rowWidth / 2 - buttonWidth,
-      y: rowTop + (s(MAIN_SHOP_MENU.rowHeight) - buttonHeight) / 2,
-      width: buttonWidth,
-      height: buttonHeight
+      x: centerX - menu.footerButtonWidth / 2,
+      y: panel.y + panel.height - menu.footerButtonBottomOffset - menu.footerButtonHeight,
+      width: menu.footerButtonWidth,
+      height: menu.footerButtonHeight
     };
   }
 
-  private _getMainShopBackButtonBounds(): { x: number; y: number; width: number; height: number } {
+  private _drawShopContent(menu: ShopMenuConfig, timestamp: number): void {
     const panel = this._getMenuPanelBounds();
+    const content = this._getMenuContentBounds(panel);
     const centerX = panel.x + panel.width / 2;
 
-    return {
-      x: centerX - MAIN_SHOP_MENU.backButtonWidth / 2,
-      y: panel.y + panel.height - MAIN_SHOP_MENU.backButtonBottomOffset - MAIN_SHOP_MENU.backButtonHeight,
-      width: MAIN_SHOP_MENU.backButtonWidth,
-      height: MAIN_SHOP_MENU.backButtonHeight
-    };
+    this._ctx.fillStyle = '#FFFFFF';
+    this._ctx.textAlign = 'center';
+    this._ctx.textBaseline = 'top';
+    this._ctx.font = menuFont(menu.titleFontSize);
+    this._ctx.fillText(menu.titleText, centerX, content.y + menu.titleOffsetY);
+
+    this._ctx.font = menuFont(menu.subtitleFontSize);
+    this._ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    this._ctx.fillText(menu.subtitleText, centerX, content.y + menu.subtitleOffsetY);
+
+    for (let i = 0; i < menu.buyOptions.length; i++) {
+      this._drawShopRow(menu, i, timestamp, i);
+    }
+
+    this._drawMenuButton(
+      this._getShopFooterButtonBounds(menu),
+      menu.footerButtonText,
+      menu.footerButtonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(menu.buyOptions.length)
+    );
   }
 
   private _drawMainShopScreen(timestamp: number): void {
     this._drawMenuBackdrop();
 
     const panel = this._getMenuPanelBounds();
-    const content = this._getMenuContentBounds(panel);
-    const centerX = panel.x + panel.width / 2;
-
     this._drawMenuPanelBackground(panel);
-
-    this._ctx.fillStyle = '#FFFFFF';
-    this._ctx.textAlign = 'center';
-    this._ctx.textBaseline = 'top';
-    this._ctx.font = menuFont(MAIN_SHOP_MENU.titleFontSize);
-    this._ctx.fillText(MAIN_SHOP_MENU.titleText, centerX, content.y + MAIN_SHOP_MENU.titleOffsetY);
-
-    this._ctx.font = menuFont(MAIN_SHOP_MENU.subtitleFontSize);
-    this._ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    this._ctx.fillText(MAIN_SHOP_MENU.subtitleText, centerX, content.y + MAIN_SHOP_MENU.subtitleOffsetY);
-
-    for (let i = 0; i < MAIN_SHOP_MENU.buyOptions.length; i++) {
-      this._drawMainShopRow(i, timestamp);
-    }
-
-    this._drawMenuButton(
-      this._getMainShopBackButtonBounds(),
-      MAIN_SHOP_MENU.backButtonText,
-      MAIN_SHOP_MENU.backButtonFontSize,
-      timestamp,
-      this._getMenuButtonInteraction(MAIN_SHOP_MENU.buyOptions.length)
-    );
+    this._drawShopContent(MAIN_SHOP_MENU, timestamp);
   }
 
-  private _drawMainShopRow(index: number, timestamp: number): void {
-    const option = MAIN_SHOP_MENU.buyOptions[index];
+  private _drawShopRow(
+    menu: ShopMenuConfig,
+    index: number,
+    timestamp: number,
+    interactionIndex: number
+  ): void {
+    const option = menu.buyOptions[index];
     const panel = this._getMenuPanelBounds();
     const centerX = panel.x + panel.width / 2;
-    const rowTop = this._getMainShopRowTopY(index);
-    const rowWidth = s(MAIN_SHOP_MENU.rowWidth);
+    const rowTop = this._getShopRowTopY(menu, index);
+    const rowWidth = s(menu.rowWidth);
     const rowLeft = centerX - rowWidth / 2;
-    const rowCenterY = rowTop + s(MAIN_SHOP_MENU.rowHeight) / 2;
-    const heartSize = s(MAIN_SHOP_MENU.heartIconSize);
+    const rowCenterY = rowTop + s(menu.rowHeight) / 2;
+    const heartSize = s(menu.heartIconSize);
     const heartX = rowLeft;
     const heartY = rowCenterY - heartSize / 2;
 
     this._drawHeart(heartX, heartY, true, heartSize);
 
-    this._ctx.font = menuFont(MAIN_SHOP_MENU.quantityFontSize);
+    this._ctx.font = menuFont(menu.quantityFontSize);
     this._ctx.fillStyle = '#FFFFFF';
     this._ctx.textAlign = 'left';
     this._ctx.textBaseline = 'middle';
     this._ctx.fillText(
-      MAIN_SHOP_MENU.quantityPrefix + option.hearts,
-      heartX + heartSize + s(MAIN_SHOP_MENU.heartToQuantityGap),
+      menu.quantityPrefix + option.hearts,
+      heartX + heartSize + s(menu.heartToQuantityGap),
       rowCenterY
     );
 
-    this._drawMainShopPriceButton(
-      this._getMainShopPriceButtonBounds(index),
+    this._drawShopPriceButton(
+      menu,
+      this._getShopPriceButtonBounds(menu, index),
       option.price,
       timestamp,
-      this._getMenuButtonInteraction(index),
-      this._canPurchaseMainShopOption(index)
+      this._getMenuButtonInteraction(interactionIndex),
+      this._canPurchaseShopOption(menu, index)
     );
   }
 
-  private _drawMainShopPriceButton(
+  private _drawShopPriceButton(
+    menu: ShopMenuConfig,
     bounds: { x: number; y: number; width: number; height: number },
     price: number,
     timestamp: number,
@@ -4605,20 +4589,31 @@ export class EndlessRunnerGame {
   ): void {
     this._drawWithButtonHoverTransform(bounds, timestamp, interaction.highlighted && enabled, (drawBounds) => {
       this._ctx.save();
-      this._ctx.globalAlpha = enabled ? 1 : MAIN_SHOP_MENU.priceButtonDisabledAlpha;
-      this._ctx.fillStyle = MAIN_SHOP_MENU.priceButtonColor;
-      this._ctx.fillRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
+      this._ctx.globalAlpha = enabled ? 1 : menu.priceButtonDisabledAlpha;
+
+      if (this._assets?.storeBackground) {
+        this._ctx.drawImage(
+          this._assets.storeBackground,
+          drawBounds.x,
+          drawBounds.y,
+          drawBounds.width,
+          drawBounds.height
+        );
+      } else {
+        this._ctx.fillStyle = menu.priceButtonColor;
+        this._ctx.fillRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
+      }
 
       if (interaction.highlighted && enabled) {
         this._ctx.fillStyle = `rgba(255, 255, 255, ${MENU_BUTTON_HOVER.hoverOverlayAlpha})`;
         this._ctx.fillRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
       }
 
-      const coinSize = s(MAIN_SHOP_MENU.priceCoinIconSize);
+      const coinSize = s(menu.priceCoinIconSize);
       const priceText = String(price);
-      this._ctx.font = menuFont(MAIN_SHOP_MENU.priceFontSize);
+      this._ctx.font = menuFont(menu.priceFontSize);
       const textWidth = this._ctx.measureText(priceText).width;
-      const gap = s(MAIN_SHOP_MENU.priceCoinGap);
+      const gap = s(menu.priceCoinGap);
       const contentWidth = coinSize + gap + textWidth;
       let contentX = drawBounds.x + (drawBounds.width - contentWidth) / 2;
       const centerY = drawBounds.y + drawBounds.height / 2;
@@ -4766,10 +4761,15 @@ export class EndlessRunnerGame {
     this._drawMenuBackdrop();
 
     const panel = this._getMenuPanelBounds();
+    this._drawMenuPanelBackground(panel);
+
+    if (this._gameOverShowsShop) {
+      this._drawShopContent(GAME_OVER_SHOP_MENU, timestamp);
+      return;
+    }
+
     const content = this._getMenuContentBounds(panel);
     const centerX = panel.x + panel.width / 2;
-
-    this._drawMenuPanelBackground(panel);
 
     this._ctx.fillStyle = '#FFFFFF';
     this._ctx.textAlign = 'center';
@@ -4778,9 +4778,7 @@ export class EndlessRunnerGame {
     const titleY = content.y + GAME_OVER_MENU.titleOffsetY;
     this._ctx.fillText('GAME OVER', centerX, titleY);
 
-    const scoreAnchorY = this._gameOverShowsShop
-      ? this._getGameOverShopBuyButtonBounds(0).y
-      : this._getGameOverButtonBounds(0).y;
+    const scoreAnchorY = this._getGameOverButtonBounds(0).y;
     const bestScoreY =
       scoreAnchorY -
       GAME_OVER_MENU.scoreAboveButtonsOffset -
@@ -4796,41 +4794,20 @@ export class EndlessRunnerGame {
     this._ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
     this._ctx.fillText('Best score: ' + this._bestScore, centerX, bestScoreY);
 
-    if (this._gameOverShowsShop) {
-      for (let i = 0; i < GAME_OVER_SHOP_MENU.buyOptions.length; i++) {
-        this._drawMenuButton(
-          this._getGameOverShopBuyButtonBounds(i),
-          GAME_OVER_SHOP_MENU.buyOptions[i],
-          GAME_OVER_SHOP_MENU.buyButtonFontSize,
-          timestamp,
-          this._getMenuButtonInteraction(i)
-        );
-      }
-
-      const mainMenuIndex = GAME_OVER_SHOP_MENU.buyOptions.length;
-      this._drawMenuButton(
-        this._getGameOverShopMainMenuButtonBounds(),
-        GAME_OVER_SHOP_MENU.mainMenuButtonText,
-        GAME_OVER_SHOP_MENU.mainMenuButtonFontSize,
-        timestamp,
-        this._getMenuButtonInteraction(mainMenuIndex)
-      );
-    } else {
-      this._drawMenuButton(
-        this._getGameOverButtonBounds(0),
-        'TRY AGAIN',
-        GAME_OVER_MENU.buttonFontSize,
-        timestamp,
-        this._getMenuButtonInteraction(0)
-      );
-      this._drawMenuButton(
-        this._getGameOverButtonBounds(1),
-        'MAIN MENU',
-        GAME_OVER_MENU.buttonFontSize,
-        timestamp,
-        this._getMenuButtonInteraction(1)
-      );
-    }
+    this._drawMenuButton(
+      this._getGameOverButtonBounds(0),
+      'TRY AGAIN',
+      GAME_OVER_MENU.buttonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(0)
+    );
+    this._drawMenuButton(
+      this._getGameOverButtonBounds(1),
+      'MAIN MENU',
+      GAME_OVER_MENU.buttonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(1)
+    );
 
     this._drawGameOverMascot();
   }

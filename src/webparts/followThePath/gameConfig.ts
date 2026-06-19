@@ -94,6 +94,7 @@ export interface LoadedAssets {
   star: HTMLImageElement;
   heart: HTMLImageElement;
   heartLost: HTMLImageElement;
+  storeBackground: HTMLImageElement;
   levelPassRaccoon: HTMLImageElement;
   backButton: HTMLImageElement;
   muteButton: HTMLImageElement;
@@ -108,6 +109,7 @@ export interface LoadedAssets {
   pauseButtonMeta: SpriteMeta;
   arrowUpMeta: SpriteMeta;
   starMeta: SpriteMeta;
+  storeBackgroundMeta: SpriteMeta;
   levelPassRaccoonMeta: SpriteMeta;
   backButtonMeta: SpriteMeta;
   muteButtonMeta: SpriteMeta;
@@ -239,20 +241,20 @@ export const DAILY_HEARTS = {
 };
 
 // =============================================================================
-// MAIN SHOP — popup from welcome screen when player has no hearts
+// SHARED SHOP LAYOUT — used by main-menu shop and game-over shop
 // =============================================================================
-export const MAIN_SHOP_MENU = {
-  titleText: 'OUT OF LIFE',
+export const SHOP_BUY_OPTIONS = [
+  { hearts: 1, price: 10 },
+  { hearts: 2, price: 20 },
+  { hearts: 3, price: 30 }
+] as const;
+
+export const SHOP_MENU_LAYOUT = {
   titleFontSize: 30,
   titleOffsetY: 0,
-  subtitleText: 'BUY MORE TO CONTINUE PLAYING',
   subtitleFontSize: 14,
   subtitleOffsetY: 80,
-  buyOptions: [
-    { hearts: 1, price: 10 },
-    { hearts: 2, price: 20 },
-    { hearts: 3, price: 30 }
-  ] as const,
+  buyOptions: SHOP_BUY_OPTIONS,
   rowWidth: 200,
   rowHeight: 56,
   rowGap: 40,
@@ -268,28 +270,38 @@ export const MAIN_SHOP_MENU = {
   priceCoinGap: 3,
   priceButtonColor: '#F57C00',
   priceButtonDisabledAlpha: 0.45,
-  backButtonText: 'BACK',
-  backButtonWidth: 280,
-  backButtonHeight: 80,
-  backButtonBottomOffset: 140,
-  backButtonFontSize: 18
+  footerButtonWidth: 280,
+  footerButtonHeight: 80,
+  footerButtonBottomOffset: 140,
+  footerButtonFontSize: 18
+} as const;
+
+export type ShopMenuConfig = typeof SHOP_MENU_LAYOUT & {
+  titleText: string;
+  subtitleText: string;
+  footerButtonText: string;
 };
+
+// =============================================================================
+// MAIN SHOP — popup from welcome screen when player has no hearts
+// =============================================================================
+export const MAIN_SHOP_MENU: ShopMenuConfig = {
+  ...SHOP_MENU_LAYOUT,
+  titleText: 'OUT OF LIFE',
+  subtitleText: 'BUY MORE TO CONTINUE PLAYING',
+  footerButtonText: 'BACK'
+};
+
+export const STORE_BG_NATIVE = { width: 259, height: 130 };
 
 // =============================================================================
 // GAME OVER SHOP — shown after losing all hearts during a run
 // =============================================================================
-export const GAME_OVER_SHOP_MENU = {
-  buyOptions: ['BUY 1 HEART', 'BUY 2 HEARTS', 'BUY 3 HEARTS'] as const,
-  buyButtonWidth: 280,
-  buyButtonHeight: 64,
-  buyButtonGap: 14,
-  buyButtonFontSize: 16,
-  buyButtonsGapAboveMainMenu: 24,
-  mainMenuButtonText: 'MAIN MENU',
-  mainMenuButtonWidth: 280,
-  mainMenuButtonHeight: 80,
-  mainMenuButtonBottomOffset: 140,
-  mainMenuButtonFontSize: 18
+export const GAME_OVER_SHOP_MENU: ShopMenuConfig = {
+  ...SHOP_MENU_LAYOUT,
+  titleText: 'OUT OF LIFE',
+  subtitleText: 'BUY MORE TO CONTINUE PLAYING',
+  footerButtonText: 'MAIN MENU'
 };
 
 // =============================================================================
@@ -679,7 +691,7 @@ export const DEBUG_ALLOW_URL_USER_OVERRIDE = true;
 /** Set true to skip Users list check and play with in-memory progress (local testing only). */
 export const DEBUG_SKIP_USER_CHECK = false;
 /** Set true to force 0 hearts and auto-open the main-menu shop (shop UI debugging). */
-export const DEBUG_FORCE_ZERO_HEARTS = true;
+export const DEBUG_FORCE_ZERO_HEARTS = false;
 export const SPAWN_RETRY_DELAY_MS = 200;
 export const SPAWN_POSITION_ATTEMPTS = 16;
 export const SPAWN_SEPARATION = s(12);
