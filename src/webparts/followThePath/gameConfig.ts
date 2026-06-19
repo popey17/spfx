@@ -518,14 +518,14 @@ export const HUD = {
   levelNames: ['EASY', 'MEDIUM', 'HARD'] as const,
   levelText: (level: number, levelName: string): string => 'LEVEL ' + level + ': ' + levelName
 };
-/** On-screen up/down controls for touch devices (auto-detected). */
+/** On-screen up/down controls for touch devices (auto-detected). Anchored to the right edge. */
 export const MOBILE_CONTROLS = {
   enabled: true,
   forceEnable: false,
-  buttonSize: 88,
+  buttonSize: 50,
   marginX: 28,
   marginBottom: 36,
-  buttonGap: 14,
+  buttonGap: 10,
   fillColor: 'rgba(28, 32, 42, 0.72)',
   fillPressedColor: 'rgba(245, 124, 0, 0.88)',
   borderColor: 'rgba(255, 255, 255, 0.55)',

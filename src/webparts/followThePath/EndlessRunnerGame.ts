@@ -3008,7 +3008,7 @@ export class EndlessRunnerGame {
 
   private _getMobileDownButtonBounds(): { x: number; y: number; width: number; height: number } {
     const size = this._getMobileControlButtonSize();
-    const x = s(MOBILE_CONTROLS.marginX);
+    const x = DESIGN_WIDTH - s(MOBILE_CONTROLS.marginX) - size;
     const y = DESIGN_HEIGHT - s(MOBILE_CONTROLS.marginBottom) - size;
 
     return { x, y, width: size, height: size };
