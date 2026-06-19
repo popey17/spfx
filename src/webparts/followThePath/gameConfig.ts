@@ -96,6 +96,8 @@ export interface LoadedAssets {
   heartLost: HTMLImageElement;
   levelPassRaccoon: HTMLImageElement;
   backButton: HTMLImageElement;
+  muteButton: HTMLImageElement;
+  soundButton: HTMLImageElement;
   obstacles: HTMLImageElement[];
   obstacleMeta: SpriteMeta[];
   characterMeta: SpriteMeta;
@@ -108,6 +110,8 @@ export interface LoadedAssets {
   starMeta: SpriteMeta;
   levelPassRaccoonMeta: SpriteMeta;
   backButtonMeta: SpriteMeta;
+  muteButtonMeta: SpriteMeta;
+  soundButtonMeta: SpriteMeta;
   speechBubbleMeta: SpriteMeta;
 }
 
@@ -217,6 +221,16 @@ export const HOME_BUTTON = {
 export const BACK_BTN_NATIVE = { width: 160, height: 160 };
 
 // =============================================================================
+// MUTE BUTTON — top-right music toggle (welcome + pause screens)
+// =============================================================================
+export const MUTE_BUTTON = {
+  marginX: 15,
+  marginY: 15,
+  iconSize: 30,
+  hitPadding: 8
+};
+
+// =============================================================================
 // DAILY HEARTS — persisted per player, reset each calendar day
 // =============================================================================
 export const DAILY_HEARTS = {
@@ -324,7 +338,12 @@ export const PAUSE_MENU = {
   buttonGap: 20,
   buttonFontSize: 20,
   buttonCornerInset: 0,
-  buttonCornerArm: 10
+  buttonCornerArm: 10,
+
+  muteButtonSize: 30,
+  muteButtonInsetX: 40,
+  muteButtonInsetY: 35,
+  muteButtonHitPadding: 6
 };
 
 // =============================================================================
@@ -571,6 +590,7 @@ export const HUD_HEIGHT = s(52);
 export const HUD_PADDING = s(16);
 export const PAUSE_BTN_SIZE = s(40);
 export const PAUSE_BTN_NATIVE = { width: 164, height: 164 };
+export const MUTE_BTN_NATIVE = { width: 164, height: 164 };
 export const ARROW_KEY_NATIVE = { width: 92, height: 92 };
 export const HEART_SIZE = s(22);
 export const HUD_COIN_SIZE = s(24);

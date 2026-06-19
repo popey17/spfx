@@ -16,6 +16,8 @@ const heartUrl: string = require('./assets/img_heart.png');
 const heartLostUrl: string = require('./assets/img_heartLost.png');
 const levelPassRaccoonUrl: string = require('./assets/img_lvlpassRacoon.png');
 const backBtnUrl: string = require('./assets/img_back.png');
+const muteBtnUrl: string = require('./assets/img_mute.png');
+const soundBtnUrl: string = require('./assets/img_sound.png');
 const coinSoundUrl: string = require('./assets/sound/coin.mp3');
 const crushSoundUrl: string = require('./assets/sound/crush.mp3');
 const alarmSoundUrl: string = require('./assets/sound/alarm.mp3');
@@ -51,6 +53,8 @@ import {
   getWelcomeMenuLayout,
   HOME_BUTTON,
   BACK_BTN_NATIVE,
+  MUTE_BUTTON,
+  MUTE_BTN_NATIVE,
   GAME_OVER_MENU,
   PAUSE_MENU,
   QUESTION_POPUP,
@@ -259,6 +263,7 @@ export class EndlessRunnerGame {
   private _cheatPizzaParty: boolean = false;
   private _pendingPizzaConfetti: boolean = false;
   private _audioUnlocked: boolean = false;
+  private _musicMuted: boolean = false;
 
   constructor(target: HTMLElement, options: EndlessRunnerGameOptions = {}) {
     this._progressService = options.progressService;
@@ -412,8 +417,10 @@ export class EndlessRunnerGame {
       this._loadImage(heartLostUrl),
       this._loadImage(levelPassRaccoonUrl),
       this._loadImage(backBtnUrl),
+      this._loadImage(muteBtnUrl),
+      this._loadImage(soundBtnUrl),
       Promise.all(obstacleUrls.map((url) => this._loadImage(url)))
-    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, heart, heartLost, levelPassRaccoon, backButton, obstacles]) => {
+    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, heart, heartLost, levelPassRaccoon, backButton, muteButton, soundButton, obstacles]) => {
       this._assets = {
         background,
         character,
@@ -432,6 +439,8 @@ export class EndlessRunnerGame {
         heartLost,
         levelPassRaccoon,
         backButton,
+        muteButton,
+        soundButton,
         obstacles,
         obstacleMeta: OBSTACLE_NATIVE,
         characterMeta: CHARACTER_SPRITE_NATIVE,
@@ -444,6 +453,8 @@ export class EndlessRunnerGame {
         starMeta: STAR_NATIVE,
         levelPassRaccoonMeta: LEVEL_PASS_RACCOON_NATIVE,
         backButtonMeta: BACK_BTN_NATIVE,
+        muteButtonMeta: MUTE_BTN_NATIVE,
+        soundButtonMeta: MUTE_BTN_NATIVE,
         speechBubbleMeta: { width: 600, height: 321 }
       };
     });
@@ -916,6 +927,14 @@ export class EndlessRunnerGame {
     }
 
     const point = this._canvasPointFromClient(clientX, clientY);
+
+    if (this._state === 'waiting' || this._state === 'shop' || this._state === 'paused') {
+      if (this._isPointInRect(point.x, point.y, this._getMuteButtonBounds())) {
+        this._lastCanvasPressAt = now;
+        this._toggleMusicMute();
+        return true;
+      }
+    }
 
     if (this._state === 'waiting' || this._state === 'shop') {
       if (this._isPointInRect(point.x, point.y, this._getHomeButtonBounds())) {
@@ -2315,10 +2334,7 @@ export class EndlessRunnerGame {
   private _unlockAudio(): void {
     const wasUnlocked = this._audioUnlocked;
     this._audioUnlocked = true;
-    this._menuMusic.muted = false;
-    this._menuMusic.volume = MUSIC_VOLUME;
-    this._gameMusic.muted = false;
-    this._gameMusic.volume = MUSIC_VOLUME;
+    this._applyMusicMuteState();
 
     if (!wasUnlocked) {
       this._removeAudioUnlockListeners();
@@ -2328,12 +2344,17 @@ export class EndlessRunnerGame {
   }
 
   private _resumeMusicForCurrentState(): void {
+    if (this._musicMuted) {
+      return;
+    }
+
     if (this._state === 'waiting') {
       this._ensureMenuMusicPlaying();
       return;
     }
 
     if (this._state === 'playing' && this._gameMusic.paused) {
+      this._applyMusicMuteState();
       this._gameMusic.play().catch(() => {
         // Browsers may block audio until the player interacts.
       });
@@ -2341,13 +2362,12 @@ export class EndlessRunnerGame {
   }
 
   private _ensureMenuMusicPlaying(): void {
-    if (this._state !== 'waiting') {
+    if (this._state !== 'waiting' || this._musicMuted) {
       return;
     }
 
     this._stopGameMusic();
-    this._menuMusic.muted = false;
-    this._menuMusic.volume = MUSIC_VOLUME;
+    this._applyMusicMuteState();
 
     if (!this._menuMusic.paused) {
       return;
@@ -2360,8 +2380,12 @@ export class EndlessRunnerGame {
 
   private _startMenuMusic(): void {
     this._stopGameMusic();
-    this._menuMusic.muted = false;
-    this._menuMusic.volume = MUSIC_VOLUME;
+    this._applyMusicMuteState();
+
+    if (this._musicMuted) {
+      return;
+    }
+
     this._menuMusic.currentTime = 0;
     this._menuMusic.play().catch(() => {
       // Browsers may block audio until the player interacts.
@@ -2375,8 +2399,12 @@ export class EndlessRunnerGame {
 
   private _startGameMusic(): void {
     this._stopMenuMusic();
-    this._gameMusic.muted = false;
-    this._gameMusic.volume = MUSIC_VOLUME;
+    this._applyMusicMuteState();
+
+    if (this._musicMuted) {
+      return;
+    }
+
     this._gameMusic.currentTime = 0;
     this._gameMusic.play().catch(() => {
       // Browsers may block audio until the player interacts.
@@ -2388,13 +2416,40 @@ export class EndlessRunnerGame {
   }
 
   private _resumeGameMusic(): void {
-    if (this._state !== 'playing') {
+    if (this._state !== 'playing' || this._musicMuted) {
       return;
     }
 
+    this._applyMusicMuteState();
     this._gameMusic.play().catch(() => {
       // Browsers may block audio until the player interacts.
     });
+  }
+
+  private _applyMusicMuteState(): void {
+    const shouldMute = this._musicMuted || !this._audioUnlocked;
+    this._menuMusic.muted = shouldMute;
+    this._gameMusic.muted = shouldMute;
+
+    if (!shouldMute) {
+      this._menuMusic.volume = MUSIC_VOLUME;
+      this._gameMusic.volume = MUSIC_VOLUME;
+    }
+  }
+
+  private _toggleMusicMute(): void {
+    this._musicMuted = !this._musicMuted;
+
+    if (this._musicMuted) {
+      this._menuMusic.pause();
+      this._gameMusic.pause();
+    }
+
+    this._applyMusicMuteState();
+
+    if (!this._musicMuted) {
+      this._resumeMusicForCurrentState();
+    }
   }
 
   private _stopGameMusic(): void {
@@ -2427,14 +2482,24 @@ export class EndlessRunnerGame {
 
     if (this._state === 'waiting') {
       this._canvas.style.cursor =
-        this._isHomeButtonHovered() || this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
+        this._isHomeButtonHovered() ||
+        this._isMuteButtonHovered() ||
+        this._getHoveredMenuButtonIndex() >= 0
+          ? 'pointer'
+          : 'default';
       this._drawWelcomeScreen(timestamp);
+      this._drawMuteButton(timestamp);
     } else if (this._state === 'shop') {
       this._canvas.style.cursor =
-        this._isHomeButtonHovered() || this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
+        this._isHomeButtonHovered() ||
+        this._isMuteButtonHovered() ||
+        this._getHoveredMenuButtonIndex() >= 0
+          ? 'pointer'
+          : 'default';
       this._drawWelcomeScreen(timestamp);
       this._drawMainShopScreen(timestamp);
       this._drawHomeButton(timestamp);
+      this._drawMuteButton(timestamp);
     } else if (this._state === 'gameover') {
       this._canvas.style.cursor = this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
       this._drawGameOverScreen(timestamp);
@@ -2456,7 +2521,8 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'paused') {
-      this._canvas.style.cursor = this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
+      this._canvas.style.cursor =
+        this._isMuteButtonHovered() || this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
       this._drawPauseScreen(timestamp);
     } else if (this._state === 'question') {
       this._canvas.style.cursor = this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
@@ -4147,6 +4213,77 @@ export class EndlessRunnerGame {
     return this._isPointInRect(this._pointerCanvasX, this._pointerCanvasY, this._getHomeButtonBounds());
   }
 
+  private _getWelcomeMuteButtonBounds(): { x: number; y: number; width: number; height: number } {
+    const iconSize = s(MUTE_BUTTON.iconSize);
+    const pad = s(MUTE_BUTTON.hitPadding);
+    const x = DESIGN_WIDTH - s(MUTE_BUTTON.marginX) - iconSize;
+
+    return {
+      x: x - pad,
+      y: s(MUTE_BUTTON.marginY) - pad,
+      width: iconSize + pad * 2,
+      height: iconSize + pad * 2
+    };
+  }
+
+  private _getPauseMuteButtonBounds(): { x: number; y: number; width: number; height: number } {
+    const panel = this._getMenuPanelBounds();
+    const iconSize = s(PAUSE_MENU.muteButtonSize);
+    const pad = s(PAUSE_MENU.muteButtonHitPadding);
+    const x = panel.x + panel.width - s(PAUSE_MENU.muteButtonInsetX) - iconSize;
+    const y = panel.y + s(PAUSE_MENU.muteButtonInsetY);
+
+    return {
+      x: x - pad,
+      y: y - pad,
+      width: iconSize + pad * 2,
+      height: iconSize + pad * 2
+    };
+  }
+
+  private _getMuteButtonBounds(): { x: number; y: number; width: number; height: number } {
+    if (this._state === 'paused') {
+      return this._getPauseMuteButtonBounds();
+    }
+
+    return this._getWelcomeMuteButtonBounds();
+  }
+
+  private _isMuteButtonVisible(): boolean {
+    return this._state === 'waiting' || this._state === 'shop' || this._state === 'paused';
+  }
+
+  private _isMuteButtonHovered(): boolean {
+    if (
+      !this._isMuteButtonVisible() ||
+      this._pointerCanvasX === undefined ||
+      this._pointerCanvasY === undefined
+    ) {
+      return false;
+    }
+
+    return this._isPointInRect(this._pointerCanvasX, this._pointerCanvasY, this._getMuteButtonBounds());
+  }
+
+  private _drawMuteButton(timestamp: number): void {
+    const bounds = this._getMuteButtonBounds();
+    const hovered = this._isMuteButtonHovered();
+    const pad =
+      this._state === 'paused' ? s(PAUSE_MENU.muteButtonHitPadding) : s(MUTE_BUTTON.hitPadding);
+    const iconSize =
+      this._state === 'paused' ? s(PAUSE_MENU.muteButtonSize) : s(MUTE_BUTTON.iconSize);
+    const image = this._musicMuted ? this._assets?.muteButton : this._assets?.soundButton;
+
+    this._drawWithButtonHoverTransform(bounds, timestamp, hovered, (drawBounds) => {
+      const iconX = drawBounds.x + pad;
+      const iconY = drawBounds.y + pad;
+
+      if (image) {
+        this._ctx.drawImage(image, iconX, iconY, iconSize, iconSize);
+      }
+    });
+  }
+
   private _getGameOverMenuButtonCount(): number {
     if (!this._gameOverShowsShop) {
       return 2;
@@ -4549,6 +4686,8 @@ export class EndlessRunnerGame {
     if (this._showPauseMainMenuConfirm) {
       this._drawPauseConfirmDialog(timestamp);
     }
+
+    this._drawMuteButton(timestamp);
   }
 
   private _getPauseConfirmPanelBounds(): { x: number; y: number; width: number; height: number } {
