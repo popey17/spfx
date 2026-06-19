@@ -302,6 +302,10 @@ export const QUESTION_POPUP = {
 export const ANSWER_FEEDBACK_MS = 600;
 export const ANSWER_CORRECT_TINT = 'rgba(34, 197, 94, 0.55)';
 export const ANSWER_WRONG_TINT = 'rgba(239, 68, 68, 0.55)';
+export const WRONG_ANSWER_SCREEN_SHAKE = {
+  durationMs: 600,
+  amplitude: 14
+};
 
 export const COUNTDOWN_MS = 3000;
 export const COUNTDOWN = {

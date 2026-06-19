@@ -54,6 +54,7 @@ import {
   ANSWER_FEEDBACK_MS,
   ANSWER_CORRECT_TINT,
   ANSWER_WRONG_TINT,
+  WRONG_ANSWER_SCREEN_SHAKE,
   COUNTDOWN_MS,
   COUNTDOWN,
   LEVEL_INTRO,
@@ -234,6 +235,7 @@ export class EndlessRunnerGame {
   private _showPauseMainMenuConfirm: boolean = false;
   private _answerFeedback: { index: number; correct: boolean } | undefined;
   private _answerFeedbackTimerId: number | undefined;
+  private _screenShakeEndsAt: number = 0;
   private _countdownEndsAt: number = 0;
   private _levelIntroEndsAt: number = 0;
   private _levelStartScore: number = 0;
@@ -1174,6 +1176,7 @@ export class EndlessRunnerGame {
     this._explosionParticles = [];
     this._explosionFlashes = [];
     this._confettiParticles = [];
+    this._screenShakeEndsAt = 0;
     if (this._freeModeUnlocked) {
       this._currentLevel = this._freeModeDifficulty;
       this._allQuestionsComplete = false;
@@ -1896,6 +1899,27 @@ export class EndlessRunnerGame {
 
   private _applyWrongAnswerPenalty(): void {
     this._obstaclePenalty += 1;
+    this._lives--;
+  }
+
+  private _triggerWrongAnswerScreenShake(): void {
+    this._screenShakeEndsAt = performance.now() + WRONG_ANSWER_SCREEN_SHAKE.durationMs;
+  }
+
+  private _getScreenShakeOffset(timestamp: number): { x: number; y: number } {
+    if (timestamp >= this._screenShakeEndsAt) {
+      return { x: 0, y: 0 };
+    }
+
+    const remaining = this._screenShakeEndsAt - timestamp;
+    const intensity =
+      (remaining / WRONG_ANSWER_SCREEN_SHAKE.durationMs) *
+      s(WRONG_ANSWER_SCREEN_SHAKE.amplitude);
+
+    return {
+      x: (Math.random() * 2 - 1) * intensity,
+      y: (Math.random() * 2 - 1) * intensity
+    };
   }
 
   private _pickUnansweredQuestionIndex(): number | undefined {
@@ -2116,6 +2140,7 @@ export class EndlessRunnerGame {
       this._playSfx(this._correctSound);
     } else {
       this._applyWrongAnswerPenalty();
+      this._triggerWrongAnswerScreenShake();
       this._playSfx(this._alarmSound);
     }
 
@@ -2124,7 +2149,13 @@ export class EndlessRunnerGame {
       this._answerFeedbackTimerId = undefined;
       this._answerFeedback = undefined;
 
-      if (correct && this._isCurrentLevelComplete()) {
+      if (!correct && this._lives <= 0) {
+        this._resetMenuFocus();
+        this._state = 'gameover';
+        this._savePlayerProgress(true);
+        this._stopAllMusic();
+        this._playSfx(this._gameOverSound);
+      } else if (correct && this._isCurrentLevelComplete()) {
         this._showLevelCompleteScreen();
       } else {
         this._startCountdown();
@@ -2276,6 +2307,12 @@ export class EndlessRunnerGame {
   }
 
   private _draw(timestamp: number = 0): void {
+    const shake = this._getScreenShakeOffset(timestamp);
+    this._ctx.save();
+    if (shake.x !== 0 || shake.y !== 0) {
+      this._ctx.translate(shake.x, shake.y);
+    }
+
     const width = DESIGN_WIDTH;
     const height = DESIGN_HEIGHT;
 
@@ -2324,6 +2361,8 @@ export class EndlessRunnerGame {
     } else if (this._state === 'countdown') {
       this._drawCountdownOverlay(timestamp);
     }
+
+    this._ctx.restore();
   }
 
   private _getCountdownValue(timestamp: number): number {
