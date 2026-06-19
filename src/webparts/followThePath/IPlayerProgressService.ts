@@ -29,6 +29,6 @@ export interface IPlayerProgressService {
   /** Persist daily hearts immediately after a life is lost. */
   saveDailyHearts(update: DailyHeartsUpdate): Promise<void>;
 
-  /** Deduct coins and grant hearts from the main-menu shop. */
-  saveShopPurchase(update: ShopPurchaseUpdate): Promise<void>;
+  /** Deduct coins and grant hearts from the shop. Returns the new spendable TotalCoin balance. */
+  saveShopPurchase(update: ShopPurchaseUpdate): Promise<number>;
 }

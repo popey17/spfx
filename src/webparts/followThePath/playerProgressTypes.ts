@@ -11,19 +11,20 @@ import {
  * Users list — one row per player (profile + cross-game totals).
  * Game1Data list — Follow the Path progress, linked by Email.
  *
- * Users columns (SharePoint internal names — do not change the list):
- * | Title | Email | LOBT | Market | TotalCoin | MiniQuestXP | MasteryQuestXP |
+ * Users columns used by Follow the Path (SharePoint internal names):
+ * | Title | Email | LOBT | Market |
+ * | TotalCoin | TotalCoinEarned | TotalXP (read-only) |
+ * | MiniQuestXP | MasteryQuestXP |
  * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
- * | Game2Level1XP | Game2Level2XP | Game2Level3XP |
  *
- * TotalXP is a read-only/calculated column on the list — never written by this game.
+ * TotalCoin — spendable balance (increases on earn, decreases on spend e.g. shop).
+ * TotalCoinEarned — lifetime coins earned; only ever increases.
+ * TotalXP is read-only on the list — never written by this game.
  *
  * Game1Data columns:
  * | Email | FollowThePath_HighScore | FollowThePath_Level (Text) | FollowThePath_LevelXp |
  * | FollowThePath_EarnedQuestions | FTPFreeMode |
  * | FollowThePath_HeartsRemaining | FollowThePath_HeartsDay |
- *
- * FollowThePath_LevelXp stores total XP earned across all completed levels (100+150+200 max).
  */
 export const USERS_LIST_CONFIG = {
   listTitle: 'Users',
@@ -34,17 +35,33 @@ export const USERS_LIST_CONFIG = {
     lobt: 'LOBT',
     market: 'Market',
     totalCoin: 'TotalCoin',
+    totalCoinEarned: 'TotalCoinEarned',
     totalXp: 'TotalXP',
     miniQuestXp: 'MiniQuestXP',
     masteryQuestXp: 'MasteryQuestXP',
     game1Level1Xp: 'Game1Level1XP',
     game1Level2Xp: 'Game1Level2XP',
-    game1Level3Xp: 'Game1Level3XP',
-    game2Level1Xp: 'Game2Level1XP',
-    game2Level2Xp: 'Game2Level2XP',
-    game2Level3Xp: 'Game2Level3XP'
+    game1Level3Xp: 'Game1Level3XP'
   }
 } as const;
+
+/** Scalar Users list columns fetched for Follow the Path (LOBT/Market loaded separately). */
+export function getUsersListSelectFieldsForGame1(): string[] {
+  const fields = USERS_LIST_CONFIG.fields;
+  return [
+    fields.id,
+    fields.title,
+    fields.email,
+    fields.totalCoin,
+    fields.totalCoinEarned,
+    fields.totalXp,
+    fields.miniQuestXp,
+    fields.masteryQuestXp,
+    fields.game1Level1Xp,
+    fields.game1Level2Xp,
+    fields.game1Level3Xp
+  ];
+}
 
 export const GAME1_DATA_LIST_CONFIG = {
   listTitle: 'Game1Data',
@@ -71,15 +88,13 @@ export interface UserProfileRecord {
   lobt: string;
   market: string;
   totalCoin: number;
+  totalCoinEarned: number;
   totalXp: number;
   miniQuestXp: number;
   masteryQuestXp: number;
   game1Level1Xp: number;
   game1Level2Xp: number;
   game1Level3Xp: number;
-  game2Level1Xp: number;
-  game2Level2Xp: number;
-  game2Level3Xp: number;
 }
 
 export interface FollowThePathProgressData {
@@ -195,15 +210,13 @@ export function createDefaultUserProfile(email: string, title: string = ''): Use
     lobt: '',
     market: '',
     totalCoin: 0,
+    totalCoinEarned: 0,
     totalXp: 0,
     miniQuestXp: 0,
     masteryQuestXp: 0,
     game1Level1Xp: 0,
     game1Level2Xp: 0,
-    game1Level3Xp: 0,
-    game2Level1Xp: 0,
-    game2Level2Xp: 0,
-    game2Level3Xp: 0
+    game1Level3Xp: 0
   };
 }
 
@@ -423,24 +436,14 @@ export function mergeFollowThePathProgressForSave(
 
 export function computeUserTotalXp(profile: Pick<
   UserProfileRecord,
-  | 'miniQuestXp'
-  | 'masteryQuestXp'
-  | 'game1Level1Xp'
-  | 'game1Level2Xp'
-  | 'game1Level3Xp'
-  | 'game2Level1Xp'
-  | 'game2Level2Xp'
-  | 'game2Level3Xp'
+  'miniQuestXp' | 'masteryQuestXp' | 'game1Level1Xp' | 'game1Level2Xp' | 'game1Level3Xp'
 >): number {
   return (
     profile.miniQuestXp +
     profile.masteryQuestXp +
     profile.game1Level1Xp +
     profile.game1Level2Xp +
-    profile.game1Level3Xp +
-    profile.game2Level1Xp +
-    profile.game2Level2Xp +
-    profile.game2Level3Xp
+    profile.game1Level3Xp
   );
 }
 
@@ -454,15 +457,13 @@ export function readUserProfileFromListItem(item: Record<string, unknown>): User
     lobt: readListTextValue(item, fields.lobt, 'LOBT', 'lobt'),
     market: readListTextValue(item, fields.market, 'Market', 'market'),
     totalCoin: toNumber(item[fields.totalCoin]),
+    totalCoinEarned: toNumber(item[fields.totalCoinEarned]),
     totalXp: 0,
     miniQuestXp: toNumber(item[fields.miniQuestXp]),
     masteryQuestXp: toNumber(item[fields.masteryQuestXp]),
     game1Level1Xp: toNumber(item[fields.game1Level1Xp]),
     game1Level2Xp: toNumber(item[fields.game1Level2Xp]),
-    game1Level3Xp: toNumber(item[fields.game1Level3Xp]),
-    game2Level1Xp: toNumber(item[fields.game2Level1Xp]),
-    game2Level2Xp: toNumber(item[fields.game2Level2Xp]),
-    game2Level3Xp: toNumber(item[fields.game2Level3Xp])
+    game1Level3Xp: toNumber(item[fields.game1Level3Xp])
   };
 
   const rawTotalXp = item[fields.totalXp];
@@ -549,39 +550,29 @@ export function writeUserTotalsToBody(
   profile: UserProfileRecord,
   earnedQuestionSlots: boolean[],
   coinsCollected: number
-): Record<string, string | number> {
+): Record<string, number> {
   const fields = USERS_LIST_CONFIG.fields;
   const levelXp = getGame1LevelXpTotals(earnedQuestionSlots);
+  const coinsEarned = Math.max(0, coinsCollected);
 
   return {
-    [fields.totalCoin]: profile.totalCoin + coinsCollected,
-    [fields.miniQuestXp]: profile.miniQuestXp,
-    [fields.masteryQuestXp]: profile.masteryQuestXp,
+    [fields.totalCoin]: profile.totalCoin + coinsEarned,
+    [fields.totalCoinEarned]: profile.totalCoinEarned + coinsEarned,
     [fields.game1Level1Xp]: Math.max(profile.game1Level1Xp, levelXp.game1Level1Xp),
     [fields.game1Level2Xp]: Math.max(profile.game1Level2Xp, levelXp.game1Level2Xp),
-    [fields.game1Level3Xp]: Math.max(profile.game1Level3Xp, levelXp.game1Level3Xp),
-    [fields.game2Level1Xp]: profile.game2Level1Xp,
-    [fields.game2Level2Xp]: profile.game2Level2Xp,
-    [fields.game2Level3Xp]: profile.game2Level3Xp
+    [fields.game1Level3Xp]: Math.max(profile.game1Level3Xp, levelXp.game1Level3Xp)
   };
 }
 
-export function writeUserTotalCoinBody(
+/** Deduct spendable coins only (TotalCoinEarned is never reduced). */
+export function writeUserCoinSpendBody(
   profile: UserProfileRecord,
-  totalCoin: number
+  coinCost: number
 ): Record<string, number> {
   const fields = USERS_LIST_CONFIG.fields;
 
   return {
-    [fields.totalCoin]: Math.max(0, totalCoin),
-    [fields.miniQuestXp]: profile.miniQuestXp,
-    [fields.masteryQuestXp]: profile.masteryQuestXp,
-    [fields.game1Level1Xp]: profile.game1Level1Xp,
-    [fields.game1Level2Xp]: profile.game1Level2Xp,
-    [fields.game1Level3Xp]: profile.game1Level3Xp,
-    [fields.game2Level1Xp]: profile.game2Level1Xp,
-    [fields.game2Level2Xp]: profile.game2Level2Xp,
-    [fields.game2Level3Xp]: profile.game2Level3Xp
+    [fields.totalCoin]: Math.max(0, profile.totalCoin - Math.max(0, coinCost))
   };
 }
 
@@ -592,19 +583,21 @@ export function writeUserRegistrationBody(input: UserRegistrationInput): Record<
     Title: input.title,
     [fields.email]: input.email,
     [fields.totalCoin]: 0,
+    [fields.totalCoinEarned]: 0,
     [fields.miniQuestXp]: 0,
     [fields.masteryQuestXp]: 0,
     [fields.game1Level1Xp]: 0,
     [fields.game1Level2Xp]: 0,
-    [fields.game1Level3Xp]: 0,
-    [fields.game2Level1Xp]: 0,
-    [fields.game2Level2Xp]: 0,
-    [fields.game2Level3Xp]: 0
+    [fields.game1Level3Xp]: 0
   };
 }
 
 function toNumber(value: unknown): number {
-  const parsed = typeof value === 'number' ? value : parseInt(String(value), 10);
+  if (typeof value === 'number' && !isNaN(value)) {
+    return value;
+  }
+
+  const parsed = parseInt(String(value).replace(/,/g, ''), 10);
   return isNaN(parsed) ? 0 : parsed;
 }
 

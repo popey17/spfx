@@ -273,7 +273,18 @@ export const SHOP_MENU_LAYOUT = {
   footerButtonWidth: 280,
   footerButtonHeight: 80,
   footerButtonBottomOffset: 140,
-  footerButtonFontSize: 18
+  footerButtonFontSize: 18,
+  insufficientCoinsMessage: 'NOT ENOUGH COIN',
+  insufficientCoinsMessageFontSize: 14,
+  insufficientCoinsMessageOffsetY: 120,
+  insufficientCoinsMessageDurationMs: 2500,
+  insufficientCoinsMessageColor: '#FF5252',
+  coinBalanceMarginX: 60,
+  coinBalanceMarginY: 40,
+  coinBalanceIconSize: 22,
+  coinBalanceGap: 8,
+  coinBalanceFontSize: 16,
+  coinBalanceColor: '#FFFFFF'
 } as const;
 
 export type ShopMenuConfig = typeof SHOP_MENU_LAYOUT & {

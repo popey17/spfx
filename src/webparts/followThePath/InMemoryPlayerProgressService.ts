@@ -40,23 +40,26 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
 
   public async saveAfterGame(session: GameSessionResult): Promise<void> {
     const game = buildFollowThePathProgressFromSession(session);
-    const totalCoins = (this._profile?.totalCoin || 0) + session.coinsCollected;
+    const coinsEarned = Math.max(0, session.coinsCollected);
+    const totalCoin = (this._profile?.totalCoin || 0) + coinsEarned;
+    const totalCoinEarned = (this._profile?.totalCoinEarned || 0) + coinsEarned;
 
     if (this._profile) {
       const levelXp = getGame1LevelXpTotals(game.earnedQuestionSlots);
       this._profile = {
         ...this._profile,
-        totalCoin: totalCoins,
-        game1Level1Xp: levelXp.game1Level1Xp,
-        game1Level2Xp: levelXp.game1Level2Xp,
-        game1Level3Xp: levelXp.game1Level3Xp
+        totalCoin,
+        totalCoinEarned,
+        game1Level1Xp: Math.max(this._profile.game1Level1Xp, levelXp.game1Level1Xp),
+        game1Level2Xp: Math.max(this._profile.game1Level2Xp, levelXp.game1Level2Xp),
+        game1Level3Xp: Math.max(this._profile.game1Level3Xp, levelXp.game1Level3Xp)
       };
       this._profile.totalXp = computeUserTotalXp(this._profile);
     }
 
     const totalXp = this._profile?.totalXp || 0;
 
-    this._record = followThePathProgressToRecord(game, totalXp, totalCoins, {
+    this._record = followThePathProgressToRecord(game, totalXp, totalCoin, {
       usersListItemId: this._profile?.listItemId,
       game1DataListItemId: this._record.game1DataListItemId
     });
@@ -71,14 +74,20 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
     };
   }
 
-  public async saveShopPurchase(update: ShopPurchaseUpdate): Promise<void> {
+  public async saveShopPurchase(update: ShopPurchaseUpdate): Promise<number> {
+    const latestCoin = this._profile?.totalCoin ?? this._record.totalCoins;
+
+    if (latestCoin < update.coinCost) {
+      throw new Error('[FollowThePath] Insufficient coins for shop purchase.');
+    }
+
     const hearts = resolveDailyHearts(update.heartsRemaining, update.heartsDay);
-    const nextCoins = Math.max(0, (this._profile?.totalCoin ?? this._record.totalCoins) - update.coinCost);
+    const newTotalCoin = Math.max(0, latestCoin - update.coinCost);
 
     if (this._profile) {
       this._profile = {
         ...this._profile,
-        totalCoin: nextCoins
+        totalCoin: newTotalCoin
       };
       this._profile.totalXp = computeUserTotalXp(this._profile);
     }
@@ -87,7 +96,9 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
       ...this._record,
       heartsRemaining: hearts.heartsRemaining,
       heartsDay: hearts.heartsDay,
-      totalCoins: nextCoins
+      totalCoins: newTotalCoin
     };
+
+    return newTotalCoin;
   }
 }

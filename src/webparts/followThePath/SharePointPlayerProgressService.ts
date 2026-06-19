@@ -17,8 +17,9 @@ import {
   writeFollowThePathProgressToBody,
   writeUserRegistrationBody,
   writeUserTotalsToBody,
-  writeUserTotalCoinBody,
+  writeUserCoinSpendBody,
   writeDailyHeartsToBody,
+  getUsersListSelectFieldsForGame1,
   getDailyHeartsDayKey,
   resolveDailyHearts,
   createEmptyEarnedQuestionSlots,
@@ -161,6 +162,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     this._profile = {
       ...this._profile,
       totalCoin: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.totalCoin]),
+      totalCoinEarned: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.totalCoinEarned]),
       game1Level1Xp: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.game1Level1Xp]),
       game1Level2Xp: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.game1Level2Xp]),
       game1Level3Xp: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.game1Level3Xp])
@@ -185,33 +187,52 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     }
   }
 
-  public async saveShopPurchase(update: ShopPurchaseUpdate): Promise<void> {
+  public async saveShopPurchase(update: ShopPurchaseUpdate): Promise<number> {
     const email = this._getCurrentEmail();
 
     if (!email || !this._profile) {
-      return;
+      throw new Error('[FollowThePath] Cannot save shop purchase without a player profile.');
     }
 
     await this._ensureGame1DataRow(email);
 
+    const userItem = await this._fetchUsersListItem(email);
+
+    if (!userItem) {
+      throw new Error('[FollowThePath] User row not found for shop purchase.');
+    }
+
+    const latestProfile = readUserProfileFromListItem(userItem);
+    this._profile = {
+      ...this._profile,
+      ...latestProfile,
+      listItemId: latestProfile.listItemId ?? this._profile.listItemId
+    };
+
+    if (latestProfile.totalCoin < update.coinCost) {
+      throw new Error('[FollowThePath] Insufficient coins for shop purchase.');
+    }
+
     const resolved = resolveDailyHearts(update.heartsRemaining, update.heartsDay);
     const heartsBody = writeDailyHeartsToBody(resolved.heartsRemaining, resolved.heartsDay);
-    const nextCoins = Math.max(0, this._profile.totalCoin - update.coinCost);
-    const coinBody = writeUserTotalCoinBody(this._profile, nextCoins);
-
-    if (this._game1DataListItemId !== undefined) {
-      await this._patchListItem(this._game1DataListTitle, this._game1DataListItemId, heartsBody);
-    }
+    const coinBody = writeUserCoinSpendBody(latestProfile, update.coinCost);
+    const newTotalCoin = this._toNumber(coinBody[USERS_LIST_CONFIG.fields.totalCoin]);
 
     if (this._profile.listItemId !== undefined) {
       await this._patchListItem(this._usersListTitle, this._profile.listItemId, coinBody);
     }
 
+    if (this._game1DataListItemId !== undefined) {
+      await this._patchListItem(this._game1DataListTitle, this._game1DataListItemId, heartsBody);
+    }
+
     this._profile = {
       ...this._profile,
-      totalCoin: nextCoins
+      totalCoin: newTotalCoin
     };
     this._profile.totalXp = computeUserTotalXp(this._profile);
+
+    return newTotalCoin;
   }
 
   private async _refreshLatestFromList(
@@ -279,21 +300,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
   }
 
   private _getUsersScalarSelectFields(): string[] {
-    const fields = USERS_LIST_CONFIG.fields;
-    return [
-      fields.id,
-      fields.title,
-      fields.email,
-      fields.totalCoin,
-      fields.miniQuestXp,
-      fields.masteryQuestXp,
-      fields.game1Level1Xp,
-      fields.game1Level2Xp,
-      fields.game1Level3Xp,
-      fields.game2Level1Xp,
-      fields.game2Level2Xp,
-      fields.game2Level3Xp
-    ];
+    return getUsersListSelectFieldsForGame1();
   }
 
   private async _fetchUsersListItem(email: string): Promise<Record<string, unknown> | undefined> {

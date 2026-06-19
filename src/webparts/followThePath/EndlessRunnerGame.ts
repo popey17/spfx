@@ -121,6 +121,7 @@ import {
   DEBUG_FORCE_ZERO_HEARTS,
   MAIN_SHOP_MENU,
   GAME_OVER_SHOP_MENU,
+  SHOP_MENU_LAYOUT,
   STORE_BG_NATIVE,
   type ShopMenuConfig,
   DEBUG_SHOW_LEVEL_COMPLETE_AT_START,
@@ -200,6 +201,8 @@ export class EndlessRunnerGame {
   private _dailyHeartsDay: string = getDailyHeartsDayKey();
   private _heartsSaving: boolean = false;
   private _shopPurchaseSaving: boolean = false;
+  private _shopMessage: string | undefined;
+  private _shopMessageEndsAt: number = 0;
   private _totalCoins: number = 0;
   private _gameOverShowsShop: boolean = false;
   private _playerY: number = 0;
@@ -1346,10 +1349,31 @@ export class EndlessRunnerGame {
     return this._dailyHeartsRemaining + option.hearts <= MAX_LIVES;
   }
 
+  private _showShopInsufficientCoinsMessage(): void {
+    this._shopMessage = SHOP_MENU_LAYOUT.insufficientCoinsMessage;
+    this._shopMessageEndsAt =
+      performance.now() + SHOP_MENU_LAYOUT.insufficientCoinsMessageDurationMs;
+  }
+
+  private _clearShopMessageIfExpired(timestamp: number): void {
+    if (this._shopMessage && timestamp >= this._shopMessageEndsAt) {
+      this._shopMessage = undefined;
+    }
+  }
+
   private _tryShopPurchase(menu: ShopMenuConfig, index: number, onSuccess?: () => void): void {
     const option = menu.buyOptions[index];
 
-    if (!option || this._shopPurchaseSaving || !this._canPurchaseShopOption(menu, index)) {
+    if (!option || this._shopPurchaseSaving) {
+      return;
+    }
+
+    if (this._totalCoins < option.price) {
+      this._showShopInsufficientCoinsMessage();
+      return;
+    }
+
+    if (this._dailyHeartsRemaining + option.hearts > MAX_LIVES) {
       return;
     }
 
@@ -1370,15 +1394,29 @@ export class EndlessRunnerGame {
         heartsDay: this._dailyHeartsDay,
         coinCost
       })
-      .then(() => {
+      .then((newTotalCoin) => {
         this._dailyHeartsRemaining = nextHearts;
-        this._totalCoins = Math.max(0, this._totalCoins - coinCost);
+        this._totalCoins = newTotalCoin;
         this._shopPurchaseSaving = false;
         onSuccess?.();
       })
       .catch((error: unknown) => {
         this._shopPurchaseSaving = false;
         console.error('[FollowThePath] Failed to save shop purchase.', error);
+
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.indexOf('Insufficient coins') >= 0) {
+          this._showShopInsufficientCoinsMessage();
+        }
+
+        this._progressService
+          ?.loadSession()
+          .then((session) => {
+            this._totalCoins = session.progress.totalCoins;
+          })
+          .catch(() => {
+            // Keep local UI unchanged if refresh fails.
+          });
       });
   }
 
@@ -4519,6 +4557,17 @@ export class EndlessRunnerGame {
     this._ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     this._ctx.fillText(menu.subtitleText, centerX, content.y + menu.subtitleOffsetY);
 
+    this._clearShopMessageIfExpired(timestamp);
+    if (this._shopMessage) {
+      this._ctx.font = menuFont(SHOP_MENU_LAYOUT.insufficientCoinsMessageFontSize);
+      this._ctx.fillStyle = SHOP_MENU_LAYOUT.insufficientCoinsMessageColor;
+      this._ctx.fillText(
+        this._shopMessage,
+        centerX,
+        content.y + SHOP_MENU_LAYOUT.insufficientCoinsMessageOffsetY
+      );
+    }
+
     for (let i = 0; i < menu.buyOptions.length; i++) {
       this._drawShopRow(menu, i, timestamp, i);
     }
@@ -4530,6 +4579,36 @@ export class EndlessRunnerGame {
       timestamp,
       this._getMenuButtonInteraction(menu.buyOptions.length)
     );
+
+    this._drawMenuPanelCoinBalance(panel);
+  }
+
+  private _drawMenuPanelCoinBalance(panel: { x: number; y: number; width: number; height: number }): void {
+    const iconSize = s(SHOP_MENU_LAYOUT.coinBalanceIconSize);
+    const marginX = s(SHOP_MENU_LAYOUT.coinBalanceMarginX);
+    const marginY = s(SHOP_MENU_LAYOUT.coinBalanceMarginY);
+    const gap = s(SHOP_MENU_LAYOUT.coinBalanceGap);
+    const coinText = String(this._totalCoins);
+
+    this._ctx.font = menuFont(SHOP_MENU_LAYOUT.coinBalanceFontSize);
+    const textWidth = this._ctx.measureText(coinText).width;
+    const rightX = panel.x + panel.width - marginX;
+    const topY = panel.y + marginY;
+    const centerY = topY + iconSize / 2;
+    const textX = rightX - textWidth;
+    const iconX = textX - gap - iconSize;
+
+    if (!this._drawUiCoinIcon(iconX, topY, iconSize)) {
+      this._ctx.fillStyle = '#FFEB3B';
+      this._ctx.beginPath();
+      this._ctx.arc(iconX + iconSize / 2, centerY, iconSize / 2, 0, Math.PI * 2);
+      this._ctx.fill();
+    }
+
+    this._ctx.fillStyle = SHOP_MENU_LAYOUT.coinBalanceColor;
+    this._ctx.textAlign = 'left';
+    this._ctx.textBaseline = 'middle';
+    this._ctx.fillText(coinText, textX, centerY);
   }
 
   private _drawMainShopScreen(timestamp: number): void {
@@ -4809,6 +4888,7 @@ export class EndlessRunnerGame {
       this._getMenuButtonInteraction(1)
     );
 
+    this._drawMenuPanelCoinBalance(panel);
     this._drawGameOverMascot();
   }
 
