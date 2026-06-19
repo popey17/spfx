@@ -1,8 +1,10 @@
 import {
   MAX_QUESTION_LEVEL,
+  MAX_LIVES,
   QUESTIONS_PER_LEVEL,
   TOTAL_QUESTION_COUNT,
-  LEVEL_XP_REWARDS
+  LEVEL_XP_REWARDS,
+  DAILY_HEARTS
 } from './gameConfig';
 
 /**
@@ -19,6 +21,7 @@ import {
  * Game1Data columns:
  * | Email | FollowThePath_HighScore | FollowThePath_Level (Text) | FollowThePath_LevelXp |
  * | FollowThePath_EarnedQuestions | FTPFreeMode |
+ * | FollowThePath_HeartsRemaining | FollowThePath_HeartsDay |
  *
  * FollowThePath_LevelXp stores total XP earned across all completed levels (100+150+200 max).
  */
@@ -52,7 +55,9 @@ export const GAME1_DATA_LIST_CONFIG = {
     level: 'FollowThePath_Level',
     levelXp: 'FollowThePath_LevelXp',
     earnedQuestions: 'FollowThePath_EarnedQuestions',
-    freeModeUnlocked: 'FTPFreeMode'
+    freeModeUnlocked: 'FTPFreeMode',
+    heartsRemaining: 'FollowThePath_HeartsRemaining',
+    heartsDay: 'FollowThePath_HeartsDay'
   }
 } as const;
 
@@ -83,6 +88,8 @@ export interface FollowThePathProgressData {
   levelXp: number;
   earnedQuestionSlots: boolean[];
   freeModeUnlocked: boolean;
+  heartsRemaining: number;
+  heartsDay: string;
 }
 
 /** Progress for this game, plus shared cross-game totals from the Users list. */
@@ -96,6 +103,8 @@ export interface PlayerProgressRecord {
   levelXp: number;
   earnedQuestionSlots: boolean[];
   freeModeUnlocked: boolean;
+  heartsRemaining: number;
+  heartsDay: string;
 }
 
 export interface PlayerSession {
@@ -120,6 +129,42 @@ export interface GameSessionResult {
   xpGainedThisSession: number;
   earnedQuestionSlots: boolean[];
   freeModeUnlocked: boolean;
+  heartsRemaining: number;
+  heartsDay: string;
+}
+
+export function getDailyHeartsDayKey(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: DAILY_HEARTS.timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(now);
+}
+
+export function resolveDailyHearts(
+  heartsRemaining: number | undefined,
+  heartsDay: string | undefined,
+  now: Date = new Date()
+): { heartsRemaining: number; heartsDay: string } {
+  const today = getDailyHeartsDayKey(now);
+
+  if (!heartsDay || heartsDay !== today) {
+    return {
+      heartsRemaining: MAX_LIVES,
+      heartsDay: today
+    };
+  }
+
+  const remaining =
+    heartsRemaining === undefined || isNaN(heartsRemaining)
+      ? MAX_LIVES
+      : Math.max(0, Math.min(MAX_LIVES, heartsRemaining));
+
+  return {
+    heartsRemaining: remaining,
+    heartsDay: today
+  };
 }
 
 export function createEmptyEarnedQuestionSlots(): boolean[] {
@@ -131,12 +176,15 @@ export function createEmptyEarnedQuestionSlots(): boolean[] {
 }
 
 export function createDefaultFollowThePathProgress(): FollowThePathProgressData {
+  const heartsDay = getDailyHeartsDayKey();
   return {
     highScore: 0,
     level: 1,
     levelXp: 0,
     earnedQuestionSlots: createEmptyEarnedQuestionSlots(),
-    freeModeUnlocked: false
+    freeModeUnlocked: false,
+    heartsRemaining: MAX_LIVES,
+    heartsDay
   };
 }
 
@@ -313,7 +361,9 @@ export function followThePathProgressToRecord(
     level,
     levelXp: getTotalEarnedXpFromSlots(earnedQuestionSlots),
     earnedQuestionSlots,
-    freeModeUnlocked: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned)
+    freeModeUnlocked: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned),
+    heartsRemaining: game.heartsRemaining,
+    heartsDay: game.heartsDay
   };
 }
 
@@ -326,7 +376,9 @@ export function buildFollowThePathProgressFromSession(session: GameSessionResult
     level,
     levelXp: getTotalEarnedXpFromSlots(earnedQuestionSlots),
     earnedQuestionSlots,
-    freeModeUnlocked: session.freeModeUnlocked
+    freeModeUnlocked: session.freeModeUnlocked,
+    heartsRemaining: session.heartsRemaining,
+    heartsDay: session.heartsDay
   };
 }
 
@@ -353,6 +405,7 @@ export function mergeFollowThePathProgressForSave(
     session.earnedQuestionSlots,
     server.earnedQuestionSlots
   );
+  const hearts = resolveDailyHearts(session.heartsRemaining, session.heartsDay);
 
   return {
     highScore: Math.max(session.highScore, server.highScore),
@@ -362,7 +415,9 @@ export function mergeFollowThePathProgressForSave(
     freeModeUnlocked:
       session.freeModeUnlocked ||
       server.freeModeUnlocked ||
-      earnedQuestionSlots.every((earned) => earned)
+      earnedQuestionSlots.every((earned) => earned),
+    heartsRemaining: hearts.heartsRemaining,
+    heartsDay: hearts.heartsDay
   };
 }
 
@@ -424,6 +479,10 @@ export function readFollowThePathProgressFromListItem(
 ): FollowThePathProgressData {
   const fields = GAME1_DATA_LIST_CONFIG.fields;
   const earnedQuestionSlots = parseEarnedQuestionSlotsFromJson(String(item[fields.earnedQuestions] || ''));
+  const hearts = resolveDailyHearts(
+    toNumber(item[fields.heartsRemaining]),
+    String(item[fields.heartsDay] || '')
+  );
 
   return {
     highScore: toNumber(item[fields.highScore]),
@@ -435,7 +494,9 @@ export function readFollowThePathProgressFromListItem(
       item[fields.freeModeUnlocked] === 1 ||
       item[fields.freeModeUnlocked] === 'true' ||
       item[fields.freeModeUnlocked] === '1' ||
-      earnedQuestionSlots.every((earned) => earned)
+      earnedQuestionSlots.every((earned) => earned),
+    heartsRemaining: hearts.heartsRemaining,
+    heartsDay: hearts.heartsDay
   };
 }
 
@@ -445,13 +506,29 @@ export function writeFollowThePathProgressToBody(
   const fields = GAME1_DATA_LIST_CONFIG.fields;
   const earnedQuestionSlots = parseEarnedQuestionSlots(game.earnedQuestionSlots);
   const level = getProgressLevelFromSlots(earnedQuestionSlots);
+  const hearts = resolveDailyHearts(game.heartsRemaining, game.heartsDay);
 
   return {
     [fields.highScore]: game.highScore,
     [fields.level]: String(level),
     [fields.levelXp]: getTotalEarnedXpFromSlots(earnedQuestionSlots),
     [fields.earnedQuestions]: serializeEarnedQuestionSlots(earnedQuestionSlots),
-    [fields.freeModeUnlocked]: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned)
+    [fields.freeModeUnlocked]: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned),
+    [fields.heartsRemaining]: hearts.heartsRemaining,
+    [fields.heartsDay]: hearts.heartsDay
+  };
+}
+
+export function writeDailyHeartsToBody(
+  heartsRemaining: number,
+  heartsDay: string
+): Record<string, string | number> {
+  const fields = GAME1_DATA_LIST_CONFIG.fields;
+  const hearts = resolveDailyHearts(heartsRemaining, heartsDay);
+
+  return {
+    [fields.heartsRemaining]: hearts.heartsRemaining,
+    [fields.heartsDay]: hearts.heartsDay
   };
 }
 

@@ -111,6 +111,8 @@ import {
   DEBUG_SPAWN_SHIELD_FIRST,
   DEBUG_AUTO_COLLECT_SHIELDS,
   DEBUG_FORCE_FREE_MODE,
+  MAIN_SHOP_MENU,
+  GAME_OVER_SHOP_MENU,
   DEBUG_SHOW_LEVEL_COMPLETE_AT_START,
   SPAWN_RETRY_DELAY_MS,
   SPAWN_POSITION_ATTEMPTS,
@@ -144,6 +146,8 @@ import {
   createEmptyEarnedQuestionSlots,
   createDefaultPlayerProgress,
   getLevelXpFromSlots,
+  getDailyHeartsDayKey,
+  resolveDailyHearts,
   type PlayerProgressRecord
 } from './playerProgressTypes';
 import { redirectToHomePage } from './registrationRedirect';
@@ -183,6 +187,10 @@ export class EndlessRunnerGame {
   private _state: GameState = 'waiting';
   private _score: number = 0;
   private _lives: number = MAX_LIVES;
+  private _dailyHeartsRemaining: number = MAX_LIVES;
+  private _dailyHeartsDay: string = getDailyHeartsDayKey();
+  private _heartsSaving: boolean = false;
+  private _gameOverShowsShop: boolean = false;
   private _playerY: number = 0;
   private _movement: number = 0;
   private _touchMovement: number = 0;
@@ -571,7 +579,8 @@ export class EndlessRunnerGame {
       this._state === 'gameover' ||
       this._state === 'paused' ||
       this._state === 'levelComplete' ||
-      this._state === 'question'
+      this._state === 'question' ||
+      this._state === 'shop'
     );
   }
 
@@ -581,7 +590,7 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'gameover') {
-      return 2;
+      return this._getGameOverMenuButtonCount();
     }
 
     if (this._state === 'paused') {
@@ -598,6 +607,10 @@ export class EndlessRunnerGame {
 
     if (this._state === 'question') {
       return this._getCurrentQuestion()?.options.length ?? 0;
+    }
+
+    if (this._state === 'shop') {
+      return 1;
     }
 
     return 0;
@@ -619,7 +632,7 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'gameover') {
-      return index === 0 || index === 1 ? this._getGameOverButtonBounds(index) : undefined;
+      return this._getGameOverMenuButtonBounds(index);
     }
 
     if (this._state === 'paused') {
@@ -636,6 +649,10 @@ export class EndlessRunnerGame {
 
     if (this._state === 'question') {
       return this._getAnswerButtonBounds(index);
+    }
+
+    if (this._state === 'shop') {
+      return index === 0 ? this._getMainShopBackButtonBounds() : undefined;
     }
 
     return undefined;
@@ -688,13 +705,26 @@ export class EndlessRunnerGame {
         return;
       }
 
-      this._startGame();
+      this._tryStartGame();
       return;
     }
 
     if (this._state === 'gameover') {
+      if (this._gameOverShowsShop) {
+        const buyCount = GAME_OVER_SHOP_MENU.buyOptions.length;
+        if (index < buyCount) {
+          return;
+        }
+
+        if (index === buyCount) {
+          this._goToMainMenu();
+        }
+
+        return;
+      }
+
       if (index === 0) {
-        this._startGame();
+        this._tryStartGame();
       } else if (index === 1) {
         this._goToMainMenu();
       }
@@ -731,6 +761,10 @@ export class EndlessRunnerGame {
 
     if (this._state === 'question' && !this._answerFeedback) {
       this._handleAnswer(index);
+    }
+
+    if (this._state === 'shop' && index === 0) {
+      this._closeShop();
     }
   }
 
@@ -883,13 +917,25 @@ export class EndlessRunnerGame {
 
     const point = this._canvasPointFromClient(clientX, clientY);
 
-    if (this._state === 'waiting') {
+    if (this._state === 'waiting' || this._state === 'shop') {
       if (this._isPointInRect(point.x, point.y, this._getHomeButtonBounds())) {
         this._lastCanvasPressAt = now;
         redirectToHomePage();
         return true;
       }
+    }
 
+    if (this._state === 'shop') {
+      if (this._isPointInRect(point.x, point.y, this._getMainShopBackButtonBounds())) {
+        this._lastCanvasPressAt = now;
+        this._closeShop();
+        return true;
+      }
+
+      return false;
+    }
+
+    if (this._state === 'waiting') {
       if (this._freeModeUnlocked) {
         const difficultyButtons = WELCOME_MENU.freeMode.difficulty.labels.length;
         for (let i = 0; i < difficultyButtons; i++) {
@@ -903,23 +949,22 @@ export class EndlessRunnerGame {
 
       if (this._isPointInRect(point.x, point.y, this._getStartButtonBounds())) {
         this._lastCanvasPressAt = now;
-        this._startGame();
+        this._tryStartGame();
         return true;
       }
       return false;
     }
 
     if (this._state === 'gameover') {
-      if (this._isPointInRect(point.x, point.y, this._getGameOverButtonBounds(0))) {
-        this._lastCanvasPressAt = now;
-        this._startGame();
-        return true;
-      }
+      const count = this._getGameOverMenuButtonCount();
 
-      if (this._isPointInRect(point.x, point.y, this._getGameOverButtonBounds(1))) {
-        this._lastCanvasPressAt = now;
-        this._goToMainMenu();
-        return true;
+      for (let i = 0; i < count; i++) {
+        const bounds = this._getGameOverMenuButtonBounds(i);
+        if (bounds && this._isPointInRect(point.x, point.y, bounds)) {
+          this._lastCanvasPressAt = now;
+          this._activateMenuButton(i);
+          return true;
+        }
       }
 
       return false;
@@ -1156,6 +1201,7 @@ export class EndlessRunnerGame {
   }
 
   private _goToMainMenu(): void {
+    this._gameOverShowsShop = false;
     this._savePlayerProgress(true);
     this._state = 'waiting';
     this._movement = 0;
@@ -1174,11 +1220,62 @@ export class EndlessRunnerGame {
     this._canvas.focus();
   }
 
+  private _tryStartGame(): void {
+    this._refreshDailyHearts();
+
+    if (this._dailyHeartsRemaining <= 0) {
+      this._openShop();
+      return;
+    }
+
+    this._startGame();
+  }
+
+  private _openShop(): void {
+    this._state = 'shop';
+    this._resetMenuFocus();
+    this._canvas.focus();
+  }
+
+  private _closeShop(): void {
+    this._state = 'waiting';
+    this._resetMenuFocus();
+    this._startMenuMusic();
+    this._canvas.focus();
+  }
+
+  private _refreshDailyHearts(): void {
+    const previousDay = this._dailyHeartsDay;
+    const hearts = resolveDailyHearts(this._dailyHeartsRemaining, this._dailyHeartsDay);
+    this._dailyHeartsRemaining = hearts.heartsRemaining;
+    this._dailyHeartsDay = hearts.heartsDay;
+
+    if (hearts.heartsDay !== previousDay) {
+      this._saveDailyHearts();
+    }
+  }
+
+  private _loseLife(): void {
+    this._lives = Math.max(0, this._lives - 1);
+    this._dailyHeartsRemaining = Math.max(0, this._dailyHeartsRemaining - 1);
+    this._saveDailyHearts();
+  }
+
+  private _handleOutOfHearts(): void {
+    this._resetMenuFocus();
+    this._gameOverShowsShop = true;
+    this._state = 'gameover';
+    this._savePlayerProgress(true);
+    this._stopAllMusic();
+    this._playSfx(this._gameOverSound);
+  }
+
   private _startGame(): void {
+    this._gameOverShowsShop = false;
     this._isFreePlaySession = this._freeModeUnlocked;
     this._resetMenuFocus();
     this._score = 0;
-    this._lives = MAX_LIVES;
+    this._lives = this._dailyHeartsRemaining;
     this._playerY = this._playableCenterY();
     this._movement = 0;
     this._clearTouchMovement();
@@ -1825,15 +1922,11 @@ export class EndlessRunnerGame {
         }
 
         this._playSfx(this._crushSound);
-        this._lives--;
+        this._loseLife();
         this._activateGhostMode(timestamp);
 
         if (this._lives <= 0) {
-          this._resetMenuFocus();
-          this._state = 'gameover';
-          this._savePlayerProgress(true);
-          this._stopAllMusic();
-          this._playSfx(this._gameOverSound);
+          this._handleOutOfHearts();
         }
         return;
       }
@@ -1912,7 +2005,7 @@ export class EndlessRunnerGame {
 
   private _applyWrongAnswerPenalty(): void {
     this._obstaclePenalty += 1;
-    this._lives--;
+    this._loseLife();
   }
 
   private _triggerWrongAnswerScreenShake(): void {
@@ -2053,7 +2146,6 @@ export class EndlessRunnerGame {
     this._savePlayerProgress(false);
 
     this._currentLevel += 1;
-    this._lives = MAX_LIVES;
     this._answeredInLevel = [false, false, false, false];
     this._levelStartScore = this._score;
     this._obstacles = [];
@@ -2163,11 +2255,7 @@ export class EndlessRunnerGame {
       this._answerFeedback = undefined;
 
       if (!correct && this._lives <= 0) {
-        this._resetMenuFocus();
-        this._state = 'gameover';
-        this._savePlayerProgress(true);
-        this._stopAllMusic();
-        this._playSfx(this._gameOverSound);
+        this._handleOutOfHearts();
       } else if (correct && this._isCurrentLevelComplete()) {
         this._showLevelCompleteScreen();
       } else {
@@ -2341,6 +2429,12 @@ export class EndlessRunnerGame {
       this._canvas.style.cursor =
         this._isHomeButtonHovered() || this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
       this._drawWelcomeScreen(timestamp);
+    } else if (this._state === 'shop') {
+      this._canvas.style.cursor =
+        this._isHomeButtonHovered() || this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
+      this._drawWelcomeScreen(timestamp);
+      this._drawMainShopScreen(timestamp);
+      this._drawHomeButton(timestamp);
     } else if (this._state === 'gameover') {
       this._canvas.style.cursor = this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
       this._drawGameOverScreen(timestamp);
@@ -3237,6 +3331,31 @@ export class EndlessRunnerGame {
     if (DEBUG_FORCE_FREE_MODE) {
       this._freeModeUnlocked = true;
     }
+
+    const hearts = resolveDailyHearts(record.heartsRemaining, record.heartsDay);
+    this._dailyHeartsRemaining = hearts.heartsRemaining;
+    this._dailyHeartsDay = hearts.heartsDay;
+  }
+
+  private _saveDailyHearts(): void {
+    if (this._heartsSaving || !this._progressService) {
+      return;
+    }
+
+    this._heartsSaving = true;
+
+    this._progressService
+      .saveDailyHearts({
+        heartsRemaining: this._dailyHeartsRemaining,
+        heartsDay: this._dailyHeartsDay
+      })
+      .then(() => {
+        this._heartsSaving = false;
+      })
+      .catch((error: unknown) => {
+        this._heartsSaving = false;
+        console.error('[FollowThePath] Failed to save daily hearts to SharePoint.', error);
+      });
   }
 
   private _savePlayerProgress(endOfSession: boolean): void {
@@ -3267,7 +3386,9 @@ export class EndlessRunnerGame {
         xpGainedInLevel: this._getLevelXpEarned(),
         xpGainedThisSession,
         earnedQuestionSlots: [...this._xpEarnedSlots],
-        freeModeUnlocked: this._freeModeUnlocked
+        freeModeUnlocked: this._freeModeUnlocked,
+        heartsRemaining: this._dailyHeartsRemaining,
+        heartsDay: this._dailyHeartsDay
       })
       .then(() => {
         this._coinsPersistedScore = this._score;
@@ -4016,7 +4137,7 @@ export class EndlessRunnerGame {
 
   private _isHomeButtonHovered(): boolean {
     if (
-      this._state !== 'waiting' ||
+      (this._state !== 'waiting' && this._state !== 'shop') ||
       this._pointerCanvasX === undefined ||
       this._pointerCanvasY === undefined
     ) {
@@ -4024,6 +4145,128 @@ export class EndlessRunnerGame {
     }
 
     return this._isPointInRect(this._pointerCanvasX, this._pointerCanvasY, this._getHomeButtonBounds());
+  }
+
+  private _getGameOverMenuButtonCount(): number {
+    if (!this._gameOverShowsShop) {
+      return 2;
+    }
+
+    return GAME_OVER_SHOP_MENU.buyOptions.length + 1;
+  }
+
+  private _getGameOverMenuButtonBounds(
+    index: number
+  ): { x: number; y: number; width: number; height: number } | undefined {
+    if (!this._gameOverShowsShop) {
+      return index === 0 || index === 1 ? this._getGameOverButtonBounds(index) : undefined;
+    }
+
+    const buyCount = GAME_OVER_SHOP_MENU.buyOptions.length;
+    if (index < buyCount) {
+      return this._getGameOverShopBuyButtonBounds(index);
+    }
+
+    if (index === buyCount) {
+      return this._getGameOverShopMainMenuButtonBounds();
+    }
+
+    return undefined;
+  }
+
+  private _getGameOverShopMainMenuButtonBounds(): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } {
+    const panel = this._getMenuPanelBounds();
+    const centerX = panel.x + panel.width / 2;
+
+    return {
+      x: centerX - GAME_OVER_SHOP_MENU.mainMenuButtonWidth / 2,
+      y:
+        panel.y +
+        panel.height -
+        GAME_OVER_SHOP_MENU.mainMenuButtonBottomOffset -
+        GAME_OVER_SHOP_MENU.mainMenuButtonHeight,
+      width: GAME_OVER_SHOP_MENU.mainMenuButtonWidth,
+      height: GAME_OVER_SHOP_MENU.mainMenuButtonHeight
+    };
+  }
+
+  private _getGameOverShopBuyButtonBounds(index: number): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } {
+    const panel = this._getMenuPanelBounds();
+    const centerX = panel.x + panel.width / 2;
+    const mainMenuButton = this._getGameOverShopMainMenuButtonBounds();
+    const buyCount = GAME_OVER_SHOP_MENU.buyOptions.length;
+    const stackHeight =
+      buyCount * GAME_OVER_SHOP_MENU.buyButtonHeight +
+      (buyCount - 1) * GAME_OVER_SHOP_MENU.buyButtonGap;
+    const startY =
+      mainMenuButton.y -
+      GAME_OVER_SHOP_MENU.buyButtonsGapAboveMainMenu -
+      stackHeight +
+      index * (GAME_OVER_SHOP_MENU.buyButtonHeight + GAME_OVER_SHOP_MENU.buyButtonGap);
+
+    return {
+      x: centerX - GAME_OVER_SHOP_MENU.buyButtonWidth / 2,
+      y: startY,
+      width: GAME_OVER_SHOP_MENU.buyButtonWidth,
+      height: GAME_OVER_SHOP_MENU.buyButtonHeight
+    };
+  }
+
+  private _getMainShopBackButtonBounds(): { x: number; y: number; width: number; height: number } {
+    const panel = this._getMenuPanelBounds();
+    const centerX = panel.x + panel.width / 2;
+
+    return {
+      x: centerX - MAIN_SHOP_MENU.backButtonWidth / 2,
+      y: panel.y + panel.height - MAIN_SHOP_MENU.backButtonBottomOffset - MAIN_SHOP_MENU.backButtonHeight,
+      width: MAIN_SHOP_MENU.backButtonWidth,
+      height: MAIN_SHOP_MENU.backButtonHeight
+    };
+  }
+
+  private _drawMainShopScreen(timestamp: number): void {
+    this._drawMenuBackdrop();
+
+    const panel = this._getMenuPanelBounds();
+    const content = this._getMenuContentBounds(panel);
+    const centerX = panel.x + panel.width / 2;
+
+    this._drawMenuPanelBackground(panel);
+
+    this._ctx.fillStyle = '#FFFFFF';
+    this._ctx.textAlign = 'center';
+    this._ctx.textBaseline = 'top';
+    this._ctx.font = menuFont(MAIN_SHOP_MENU.titleFontSize);
+    this._ctx.fillText(MAIN_SHOP_MENU.titleText, centerX, content.y + MAIN_SHOP_MENU.titleOffsetY);
+
+    this._drawWrappedText(
+      MAIN_SHOP_MENU.messageText,
+      centerX,
+      content.y + MAIN_SHOP_MENU.messageOffsetY,
+      content.width - MAIN_SHOP_MENU.messageWidthInset,
+      s(MAIN_SHOP_MENU.messageLineHeight),
+      menuFont(MAIN_SHOP_MENU.messageFontSize),
+      'rgba(255, 255, 255, 0.9)',
+      'center'
+    );
+
+    this._drawMenuButton(
+      this._getMainShopBackButtonBounds(),
+      MAIN_SHOP_MENU.backButtonText,
+      MAIN_SHOP_MENU.backButtonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(0)
+    );
   }
 
   private _drawHomeButton(timestamp: number): void {
@@ -4133,7 +4376,9 @@ export class EndlessRunnerGame {
       instructionText: 'Use arrow keys to navigate · Enter to select'
     });
     this._drawWelcomeMascot(timestamp);
-    this._drawHomeButton(timestamp);
+    if (this._state !== 'shop') {
+      this._drawHomeButton(timestamp);
+    }
   }
 
   private _drawGameOverMascot(): void {
@@ -4163,24 +4408,11 @@ export class EndlessRunnerGame {
     const titleY = content.y + GAME_OVER_MENU.titleOffsetY;
     this._ctx.fillText('GAME OVER', centerX, titleY);
 
-    this._drawMenuButton(
-      this._getGameOverButtonBounds(0),
-      'TRY AGAIN',
-      GAME_OVER_MENU.buttonFontSize,
-      timestamp,
-      this._getMenuButtonInteraction(0)
-    );
-    this._drawMenuButton(
-      this._getGameOverButtonBounds(1),
-      'MAIN MENU',
-      GAME_OVER_MENU.buttonFontSize,
-      timestamp,
-      this._getMenuButtonInteraction(1)
-    );
-
-    const buttonTop = this._getGameOverButtonBounds(0).y;
+    const scoreAnchorY = this._gameOverShowsShop
+      ? this._getGameOverShopBuyButtonBounds(0).y
+      : this._getGameOverButtonBounds(0).y;
     const bestScoreY =
-      buttonTop -
+      scoreAnchorY -
       GAME_OVER_MENU.scoreAboveButtonsOffset -
       GAME_OVER_MENU.bestScoreFontSize;
     const scoreY =
@@ -4193,6 +4425,42 @@ export class EndlessRunnerGame {
     this._ctx.font = menuFont(GAME_OVER_MENU.bestScoreFontSize);
     this._ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
     this._ctx.fillText('Best score: ' + this._bestScore, centerX, bestScoreY);
+
+    if (this._gameOverShowsShop) {
+      for (let i = 0; i < GAME_OVER_SHOP_MENU.buyOptions.length; i++) {
+        this._drawMenuButton(
+          this._getGameOverShopBuyButtonBounds(i),
+          GAME_OVER_SHOP_MENU.buyOptions[i],
+          GAME_OVER_SHOP_MENU.buyButtonFontSize,
+          timestamp,
+          this._getMenuButtonInteraction(i)
+        );
+      }
+
+      const mainMenuIndex = GAME_OVER_SHOP_MENU.buyOptions.length;
+      this._drawMenuButton(
+        this._getGameOverShopMainMenuButtonBounds(),
+        GAME_OVER_SHOP_MENU.mainMenuButtonText,
+        GAME_OVER_SHOP_MENU.mainMenuButtonFontSize,
+        timestamp,
+        this._getMenuButtonInteraction(mainMenuIndex)
+      );
+    } else {
+      this._drawMenuButton(
+        this._getGameOverButtonBounds(0),
+        'TRY AGAIN',
+        GAME_OVER_MENU.buttonFontSize,
+        timestamp,
+        this._getMenuButtonInteraction(0)
+      );
+      this._drawMenuButton(
+        this._getGameOverButtonBounds(1),
+        'MAIN MENU',
+        GAME_OVER_MENU.buttonFontSize,
+        timestamp,
+        this._getMenuButtonInteraction(1)
+      );
+    }
 
     this._drawGameOverMascot();
   }

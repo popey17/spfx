@@ -1,4 +1,4 @@
-import type { IPlayerProgressService } from './IPlayerProgressService';
+import type { IPlayerProgressService, DailyHeartsUpdate } from './IPlayerProgressService';
 import {
   buildFollowThePathProgressFromSession,
   createDefaultPlayerProgress,
@@ -6,6 +6,7 @@ import {
   followThePathProgressToRecord,
   getGame1LevelXpTotals,
   computeUserTotalXp,
+  resolveDailyHearts,
   type GameSessionResult,
   type PlayerSession,
   type UserProfileRecord,
@@ -59,5 +60,14 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
       usersListItemId: this._profile?.listItemId,
       game1DataListItemId: this._record.game1DataListItemId
     });
+  }
+
+  public async saveDailyHearts(update: DailyHeartsUpdate): Promise<void> {
+    const hearts = resolveDailyHearts(update.heartsRemaining, update.heartsDay);
+    this._record = {
+      ...this._record,
+      heartsRemaining: hearts.heartsRemaining,
+      heartsDay: hearts.heartsDay
+    };
   }
 }

@@ -6,7 +6,8 @@ export type GameState =
   | 'question'
   | 'countdown'
   | 'levelComplete'
-  | 'gameover';
+  | 'gameover'
+  | 'shop';
 
 export interface Question {
   level: number;
@@ -214,6 +215,50 @@ export const HOME_BUTTON = {
 };
 
 export const BACK_BTN_NATIVE = { width: 160, height: 160 };
+
+// =============================================================================
+// DAILY HEARTS — persisted per player, reset each calendar day
+// =============================================================================
+export const DAILY_HEARTS = {
+  /** IANA timezone used to determine when a new day starts. */
+  timeZone: 'Asia/Singapore'
+};
+
+// =============================================================================
+// MAIN SHOP — popup from welcome screen when player has no hearts
+// =============================================================================
+export const MAIN_SHOP_MENU = {
+  titleText: 'SHOP',
+  titleFontSize: 30,
+  titleOffsetY: 80,
+  messageText: 'Buy hearts — coming soon.',
+  messageFontSize: 14,
+  messageLineHeight: 20,
+  messageOffsetY: 200,
+  messageWidthInset: 240,
+  backButtonText: 'BACK',
+  backButtonWidth: 280,
+  backButtonHeight: 80,
+  backButtonBottomOffset: 140,
+  backButtonFontSize: 18
+};
+
+// =============================================================================
+// GAME OVER SHOP — shown after losing all hearts during a run
+// =============================================================================
+export const GAME_OVER_SHOP_MENU = {
+  buyOptions: ['BUY 1 HEART', 'BUY 2 HEARTS', 'BUY 3 HEARTS'] as const,
+  buyButtonWidth: 280,
+  buyButtonHeight: 64,
+  buyButtonGap: 14,
+  buyButtonFontSize: 16,
+  buyButtonsGapAboveMainMenu: 24,
+  mainMenuButtonText: 'MAIN MENU',
+  mainMenuButtonWidth: 280,
+  mainMenuButtonHeight: 80,
+  mainMenuButtonBottomOffset: 140,
+  mainMenuButtonFontSize: 18
+};
 
 // =============================================================================
 // GAME OVER MENU LAYOUT — same panel style as welcome menu

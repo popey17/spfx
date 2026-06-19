@@ -1,7 +1,8 @@
 import { SPHttpClient, SPHttpClientResponse } from '@microsoft/sp-http';
 import type { WebPartContext } from '@microsoft/sp-webpart-base';
 
-import type { IPlayerProgressService } from './IPlayerProgressService';
+import { MAX_LIVES } from './gameConfig';
+import type { IPlayerProgressService, DailyHeartsUpdate } from './IPlayerProgressService';
 import {
   buildFollowThePathProgressFromSession,
   createDefaultFollowThePathProgress,
@@ -16,6 +17,9 @@ import {
   writeFollowThePathProgressToBody,
   writeUserRegistrationBody,
   writeUserTotalsToBody,
+  writeDailyHeartsToBody,
+  getDailyHeartsDayKey,
+  resolveDailyHearts,
   createEmptyEarnedQuestionSlots,
   serializeEarnedQuestionSlots,
   computeUserTotalXp,
@@ -163,6 +167,23 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     this._profile.totalXp = computeUserTotalXp(this._profile);
   }
 
+  public async saveDailyHearts(update: DailyHeartsUpdate): Promise<void> {
+    const email = this._getCurrentEmail();
+
+    if (!email) {
+      return;
+    }
+
+    await this._ensureGame1DataRow(email);
+
+    const resolved = resolveDailyHearts(update.heartsRemaining, update.heartsDay);
+    const body = writeDailyHeartsToBody(resolved.heartsRemaining, resolved.heartsDay);
+
+    if (this._game1DataListItemId !== undefined) {
+      await this._patchListItem(this._game1DataListTitle, this._game1DataListItemId, body);
+    }
+  }
+
   private async _refreshLatestFromList(
     email: string
   ): Promise<FollowThePathProgressData | undefined> {
@@ -212,6 +233,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
 
     const fields = GAME1_DATA_LIST_CONFIG.fields;
     const emptySlots = createEmptyEarnedQuestionSlots();
+    const heartsDay = getDailyHeartsDayKey();
     const created = await this._createListItem(this._game1DataListTitle, {
       Title: email,
       [fields.email]: email,
@@ -219,7 +241,9 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       [fields.level]: '1',
       [fields.levelXp]: 0,
       [fields.earnedQuestions]: serializeEarnedQuestionSlots(emptySlots),
-      [fields.freeModeUnlocked]: false
+      [fields.freeModeUnlocked]: false,
+      [fields.heartsRemaining]: MAX_LIVES,
+      [fields.heartsDay]: heartsDay
     });
     this._game1DataListItemId = this._toOptionalId(created[fields.id]);
   }
@@ -313,7 +337,9 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       fields.level,
       fields.levelXp,
       fields.earnedQuestions,
-      fields.freeModeUnlocked
+      fields.freeModeUnlocked,
+      fields.heartsRemaining,
+      fields.heartsDay
     ];
   }
 
