@@ -2,7 +2,7 @@ import { SPHttpClient, SPHttpClientResponse } from '@microsoft/sp-http';
 import type { WebPartContext } from '@microsoft/sp-webpart-base';
 
 import { MAX_LIVES } from './gameConfig';
-import type { IPlayerProgressService, DailyHeartsUpdate } from './IPlayerProgressService';
+import type { IPlayerProgressService, DailyHeartsUpdate, ShopPurchaseUpdate } from './IPlayerProgressService';
 import {
   buildFollowThePathProgressFromSession,
   createDefaultFollowThePathProgress,
@@ -17,6 +17,7 @@ import {
   writeFollowThePathProgressToBody,
   writeUserRegistrationBody,
   writeUserTotalsToBody,
+  writeUserTotalCoinBody,
   writeDailyHeartsToBody,
   getDailyHeartsDayKey,
   resolveDailyHearts,
@@ -182,6 +183,35 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     if (this._game1DataListItemId !== undefined) {
       await this._patchListItem(this._game1DataListTitle, this._game1DataListItemId, body);
     }
+  }
+
+  public async saveShopPurchase(update: ShopPurchaseUpdate): Promise<void> {
+    const email = this._getCurrentEmail();
+
+    if (!email || !this._profile) {
+      return;
+    }
+
+    await this._ensureGame1DataRow(email);
+
+    const resolved = resolveDailyHearts(update.heartsRemaining, update.heartsDay);
+    const heartsBody = writeDailyHeartsToBody(resolved.heartsRemaining, resolved.heartsDay);
+    const nextCoins = Math.max(0, this._profile.totalCoin - update.coinCost);
+    const coinBody = writeUserTotalCoinBody(this._profile, nextCoins);
+
+    if (this._game1DataListItemId !== undefined) {
+      await this._patchListItem(this._game1DataListTitle, this._game1DataListItemId, heartsBody);
+    }
+
+    if (this._profile.listItemId !== undefined) {
+      await this._patchListItem(this._usersListTitle, this._profile.listItemId, coinBody);
+    }
+
+    this._profile = {
+      ...this._profile,
+      totalCoin: nextCoins
+    };
+    this._profile.totalXp = computeUserTotalXp(this._profile);
   }
 
   private async _refreshLatestFromList(

@@ -1,4 +1,4 @@
-import type { IPlayerProgressService, DailyHeartsUpdate } from './IPlayerProgressService';
+import type { IPlayerProgressService, DailyHeartsUpdate, ShopPurchaseUpdate } from './IPlayerProgressService';
 import {
   buildFollowThePathProgressFromSession,
   createDefaultPlayerProgress,
@@ -68,6 +68,26 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
       ...this._record,
       heartsRemaining: hearts.heartsRemaining,
       heartsDay: hearts.heartsDay
+    };
+  }
+
+  public async saveShopPurchase(update: ShopPurchaseUpdate): Promise<void> {
+    const hearts = resolveDailyHearts(update.heartsRemaining, update.heartsDay);
+    const nextCoins = Math.max(0, (this._profile?.totalCoin ?? this._record.totalCoins) - update.coinCost);
+
+    if (this._profile) {
+      this._profile = {
+        ...this._profile,
+        totalCoin: nextCoins
+      };
+      this._profile.totalXp = computeUserTotalXp(this._profile);
+    }
+
+    this._record = {
+      ...this._record,
+      heartsRemaining: hearts.heartsRemaining,
+      heartsDay: hearts.heartsDay,
+      totalCoins: nextCoins
     };
   }
 }

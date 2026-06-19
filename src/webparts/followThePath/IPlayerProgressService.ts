@@ -10,6 +10,12 @@ export interface DailyHeartsUpdate {
   heartsDay: string;
 }
 
+export interface ShopPurchaseUpdate {
+  heartsRemaining: number;
+  heartsDay: string;
+  coinCost: number;
+}
+
 export interface IPlayerProgressService {
   /** Load user profile (Users list) and game progress (Game1Data list). */
   loadSession(): Promise<PlayerSession>;
@@ -22,4 +28,7 @@ export interface IPlayerProgressService {
 
   /** Persist daily hearts immediately after a life is lost. */
   saveDailyHearts(update: DailyHeartsUpdate): Promise<void>;
+
+  /** Deduct coins and grant hearts from the main-menu shop. */
+  saveShopPurchase(update: ShopPurchaseUpdate): Promise<void>;
 }

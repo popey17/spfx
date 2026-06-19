@@ -566,6 +566,25 @@ export function writeUserTotalsToBody(
   };
 }
 
+export function writeUserTotalCoinBody(
+  profile: UserProfileRecord,
+  totalCoin: number
+): Record<string, number> {
+  const fields = USERS_LIST_CONFIG.fields;
+
+  return {
+    [fields.totalCoin]: Math.max(0, totalCoin),
+    [fields.miniQuestXp]: profile.miniQuestXp,
+    [fields.masteryQuestXp]: profile.masteryQuestXp,
+    [fields.game1Level1Xp]: profile.game1Level1Xp,
+    [fields.game1Level2Xp]: profile.game1Level2Xp,
+    [fields.game1Level3Xp]: profile.game1Level3Xp,
+    [fields.game2Level1Xp]: profile.game2Level1Xp,
+    [fields.game2Level2Xp]: profile.game2Level2Xp,
+    [fields.game2Level3Xp]: profile.game2Level3Xp
+  };
+}
+
 export function writeUserRegistrationBody(input: UserRegistrationInput): Record<string, string | number> {
   const fields = USERS_LIST_CONFIG.fields;
 

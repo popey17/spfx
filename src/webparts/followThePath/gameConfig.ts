@@ -242,14 +242,32 @@ export const DAILY_HEARTS = {
 // MAIN SHOP — popup from welcome screen when player has no hearts
 // =============================================================================
 export const MAIN_SHOP_MENU = {
-  titleText: 'SHOP',
+  titleText: 'OUT OF LIFE',
   titleFontSize: 30,
-  titleOffsetY: 80,
-  messageText: 'Buy hearts — coming soon.',
-  messageFontSize: 14,
-  messageLineHeight: 20,
-  messageOffsetY: 200,
-  messageWidthInset: 240,
+  titleOffsetY: 0,
+  subtitleText: 'BUY MORE TO CONTINUE PLAYING',
+  subtitleFontSize: 14,
+  subtitleOffsetY: 80,
+  buyOptions: [
+    { hearts: 1, price: 10 },
+    { hearts: 2, price: 20 },
+    { hearts: 3, price: 30 }
+  ] as const,
+  rowWidth: 200,
+  rowHeight: 56,
+  rowGap: 40,
+  rowsStartOffsetY: 150,
+  heartIconSize: 20,
+  heartToQuantityGap: 18,
+  quantityFontSize: 18,
+  quantityPrefix: 'X ',
+  priceButtonWidth: 60,
+  priceButtonHeight: 30,
+  priceFontSize: 16,
+  priceCoinIconSize: 15,
+  priceCoinGap: 3,
+  priceButtonColor: '#F57C00',
+  priceButtonDisabledAlpha: 0.45,
   backButtonText: 'BACK',
   backButtonWidth: 280,
   backButtonHeight: 80,
@@ -601,7 +619,7 @@ export const HUD = {
   scoreLabel: 'SCORE:',
   levelFontSize: 18,
   /** Display names for question levels 1–3 (index 0 = level 1). */
-  levelNames: ['EASY', 'MEDIUM', 'HARD'] as const,
+  levelNames: ['EASY', 'MEDIUM', 'ADVANCED'] as const,
   levelText: (level: number, levelName: string): string => 'LEVEL ' + level + ': ' + levelName
 };
 /** On-screen up/down controls for touch devices (auto-detected). Anchored to the right edge. */
@@ -632,6 +650,15 @@ export const SFX_VOLUME = 0.7;
 export const QUESTION_INTERVAL_MS = 15000;
 export const SHIELD_SPAWN_MIN_MS = 10000;
 export const SHIELD_SPAWN_MAX_MS = 20000;
+/** Power shield duration after a correct answer or in-game shield pickup. */
+export const POWER_SHIELD_DURATION_MS = 7000;
+/** Blink the shield aura when remaining time is at or below this threshold. */
+export const POWER_SHIELD_BLINK = {
+  warningMs: 3000,
+  minOpacity: 0.2,
+  maxOpacity: 0.95,
+  periodMs: 250
+};
 /** @deprecated Use SHIELD_SPAWN_MIN_MS / SHIELD_SPAWN_MAX_MS */
 export const SHIELD_SPAWN_INTERVAL_MS = QUESTION_INTERVAL_MS;
 export const GAME_SPEED_INITIAL = 1;
@@ -651,6 +678,8 @@ export const DEBUG_SHOW_LEVEL_COMPLETE_AT_START = false;
 export const DEBUG_ALLOW_URL_USER_OVERRIDE = true;
 /** Set true to skip Users list check and play with in-memory progress (local testing only). */
 export const DEBUG_SKIP_USER_CHECK = false;
+/** Set true to force 0 hearts and auto-open the main-menu shop (shop UI debugging). */
+export const DEBUG_FORCE_ZERO_HEARTS = true;
 export const SPAWN_RETRY_DELAY_MS = 200;
 export const SPAWN_POSITION_ATTEMPTS = 16;
 export const SPAWN_SEPARATION = s(12);
