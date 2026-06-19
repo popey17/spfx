@@ -1,6 +1,9 @@
 export const REGISTER_PAGE_URL =
   'https://clickrmedia.sharepoint.com/sites/trc-central/SitePages/Register.aspx';
 
+export const HOME_PAGE_URL =
+  'https://clickrmedia.sharepoint.com/sites/trc-central/?env=WebView';
+
 function parseEmailParam(raw: string | undefined): string | undefined {
   if (!raw) {
     return undefined;
@@ -80,4 +83,8 @@ export function buildRegisterPageUrl(email: string = ''): string {
 
 export function redirectToRegisterPage(email: string = ''): void {
   window.location.assign(buildRegisterPageUrl(email));
+}
+
+export function redirectToHomePage(): void {
+  window.location.assign(HOME_PAGE_URL);
 }

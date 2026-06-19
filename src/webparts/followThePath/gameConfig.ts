@@ -94,6 +94,7 @@ export interface LoadedAssets {
   heart: HTMLImageElement;
   heartLost: HTMLImageElement;
   levelPassRaccoon: HTMLImageElement;
+  backButton: HTMLImageElement;
   obstacles: HTMLImageElement[];
   obstacleMeta: SpriteMeta[];
   characterMeta: SpriteMeta;
@@ -105,6 +106,7 @@ export interface LoadedAssets {
   arrowUpMeta: SpriteMeta;
   starMeta: SpriteMeta;
   levelPassRaccoonMeta: SpriteMeta;
+  backButtonMeta: SpriteMeta;
   speechBubbleMeta: SpriteMeta;
 }
 
@@ -197,6 +199,21 @@ export const WELCOME_MENU = {
 export function getWelcomeMenuLayout(freeModeUnlocked: boolean): typeof WELCOME_MENU.standard | typeof WELCOME_MENU.freeMode {
   return freeModeUnlocked ? WELCOME_MENU.freeMode : WELCOME_MENU.standard;
 }
+
+// =============================================================================
+// HOME BUTTON — top-left back link on the welcome screen
+// =============================================================================
+export const HOME_BUTTON = {
+  marginX: 15,
+  marginY: 15,
+  iconSize: 30,
+  fontSize: 18,
+  gap: 10,
+  hitPadding: 5,
+  label: 'HOME'
+};
+
+export const BACK_BTN_NATIVE = { width: 160, height: 160 };
 
 // =============================================================================
 // GAME OVER MENU LAYOUT — same panel style as welcome menu
@@ -481,7 +498,7 @@ export const MENU_BUTTON_HOVER = {
   baseScale: 1.04,
   pulseAmplitude: 0.018,
   pulseSpeed: 0.009,
-  liftPx: 3,
+  liftPx: 0.5,
   focusOverlayAlpha: 0.24,
   hoverOverlayAlpha: 0.18
 };

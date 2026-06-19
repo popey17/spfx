@@ -15,6 +15,7 @@ const starUrl: string = require('./assets/img_star.png');
 const heartUrl: string = require('./assets/img_heart.png');
 const heartLostUrl: string = require('./assets/img_heartLost.png');
 const levelPassRaccoonUrl: string = require('./assets/img_lvlpassRacoon.png');
+const backBtnUrl: string = require('./assets/img_back.png');
 const coinSoundUrl: string = require('./assets/sound/coin.mp3');
 const crushSoundUrl: string = require('./assets/sound/crush.mp3');
 const alarmSoundUrl: string = require('./assets/sound/alarm.mp3');
@@ -48,6 +49,8 @@ import {
   MENU_PANEL,
   WELCOME_MENU,
   getWelcomeMenuLayout,
+  HOME_BUTTON,
+  BACK_BTN_NATIVE,
   GAME_OVER_MENU,
   PAUSE_MENU,
   QUESTION_POPUP,
@@ -143,6 +146,7 @@ import {
   getLevelXpFromSlots,
   type PlayerProgressRecord
 } from './playerProgressTypes';
+import { redirectToHomePage } from './registrationRedirect';
 
 
 /**
@@ -399,8 +403,9 @@ export class EndlessRunnerGame {
       this._loadImage(heartUrl),
       this._loadImage(heartLostUrl),
       this._loadImage(levelPassRaccoonUrl),
+      this._loadImage(backBtnUrl),
       Promise.all(obstacleUrls.map((url) => this._loadImage(url)))
-    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, heart, heartLost, levelPassRaccoon, obstacles]) => {
+    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, heart, heartLost, levelPassRaccoon, backButton, obstacles]) => {
       this._assets = {
         background,
         character,
@@ -418,6 +423,7 @@ export class EndlessRunnerGame {
         heart,
         heartLost,
         levelPassRaccoon,
+        backButton,
         obstacles,
         obstacleMeta: OBSTACLE_NATIVE,
         characterMeta: CHARACTER_SPRITE_NATIVE,
@@ -429,6 +435,7 @@ export class EndlessRunnerGame {
         arrowUpMeta: ARROW_KEY_NATIVE,
         starMeta: STAR_NATIVE,
         levelPassRaccoonMeta: LEVEL_PASS_RACCOON_NATIVE,
+        backButtonMeta: BACK_BTN_NATIVE,
         speechBubbleMeta: { width: 600, height: 321 }
       };
     });
@@ -877,6 +884,12 @@ export class EndlessRunnerGame {
     const point = this._canvasPointFromClient(clientX, clientY);
 
     if (this._state === 'waiting') {
+      if (this._isPointInRect(point.x, point.y, this._getHomeButtonBounds())) {
+        this._lastCanvasPressAt = now;
+        redirectToHomePage();
+        return true;
+      }
+
       if (this._freeModeUnlocked) {
         const difficultyButtons = WELCOME_MENU.freeMode.difficulty.labels.length;
         for (let i = 0; i < difficultyButtons; i++) {
@@ -2325,7 +2338,8 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'waiting') {
-      this._canvas.style.cursor = this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
+      this._canvas.style.cursor =
+        this._isHomeButtonHovered() || this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
       this._drawWelcomeScreen(timestamp);
     } else if (this._state === 'gameover') {
       this._canvas.style.cursor = this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
@@ -3981,6 +3995,64 @@ export class EndlessRunnerGame {
     };
   }
 
+  private _getHomeButtonBounds(): { x: number; y: number; width: number; height: number } {
+    const x = s(HOME_BUTTON.marginX);
+    const y = s(HOME_BUTTON.marginY);
+    const iconSize = s(HOME_BUTTON.iconSize);
+    const gap = s(HOME_BUTTON.gap);
+    const pad = s(HOME_BUTTON.hitPadding);
+
+    this._ctx.font = menuFont(HOME_BUTTON.fontSize);
+    const textWidth = this._ctx.measureText(HOME_BUTTON.label).width;
+    const height = Math.max(iconSize, s(HOME_BUTTON.fontSize) * 1.2);
+
+    return {
+      x: x - pad,
+      y: y - pad,
+      width: iconSize + gap + textWidth + pad * 2,
+      height: height + pad * 2
+    };
+  }
+
+  private _isHomeButtonHovered(): boolean {
+    if (
+      this._state !== 'waiting' ||
+      this._pointerCanvasX === undefined ||
+      this._pointerCanvasY === undefined
+    ) {
+      return false;
+    }
+
+    return this._isPointInRect(this._pointerCanvasX, this._pointerCanvasY, this._getHomeButtonBounds());
+  }
+
+  private _drawHomeButton(timestamp: number): void {
+    const bounds = this._getHomeButtonBounds();
+    const hovered = this._isHomeButtonHovered();
+    const pad = s(HOME_BUTTON.hitPadding);
+    const iconSize = s(HOME_BUTTON.iconSize);
+    const gap = s(HOME_BUTTON.gap);
+
+    this._drawWithButtonHoverTransform(bounds, timestamp, hovered, (drawBounds) => {
+      const iconX = drawBounds.x + pad;
+      const iconY = drawBounds.y + (drawBounds.height - iconSize) / 2;
+
+      if (this._assets?.backButton) {
+        this._ctx.drawImage(this._assets.backButton, iconX, iconY, iconSize, iconSize);
+      }
+
+      this._ctx.font = menuFont(HOME_BUTTON.fontSize);
+      this._ctx.fillStyle = '#FFFFFF';
+      this._ctx.textAlign = 'left';
+      this._ctx.textBaseline = 'middle';
+      this._ctx.fillText(
+        HOME_BUTTON.label,
+        iconX + iconSize + gap,
+        drawBounds.y + drawBounds.height / 2
+      );
+    });
+  }
+
   private _drawWelcomeMascot(timestamp: number): void {
     const shipHeight = s(WELCOME_MENU.mascotShipHeight);
     const shipWidth = Math.round(shipHeight * (CHARACTER_SPRITE_NATIVE.width / CHARACTER_SPRITE_NATIVE.height));
@@ -4061,6 +4133,7 @@ export class EndlessRunnerGame {
       instructionText: 'Use arrow keys to navigate · Enter to select'
     });
     this._drawWelcomeMascot(timestamp);
+    this._drawHomeButton(timestamp);
   }
 
   private _drawGameOverMascot(): void {
