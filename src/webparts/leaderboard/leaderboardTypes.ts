@@ -10,6 +10,7 @@ export interface IndividualLeaderboardEntry {
 export interface LobtLeaderboardEntry {
   rank: number;
   lobt: string;
+  playerCount: number;
   xp: number;
 }
 

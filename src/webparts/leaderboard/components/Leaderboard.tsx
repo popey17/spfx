@@ -5,16 +5,15 @@ import type { IndividualLeaderboardEntry, LeaderboardData, LeaderboardTab, LobtL
 export type LeaderboardViewStatus = 'loading' | 'ready' | 'error';
 
 interface ITableStateRowProps {
-  colSpan: number;
   message: string;
 }
 
-const TableStateRow: React.FC<ITableStateRowProps> = ({ colSpan, message }) => (
-  <tr>
-    <td className={styles.tableStateCell} colSpan={colSpan}>
+const TableStateRow: React.FC<ITableStateRowProps> = ({ message }) => (
+  <div className={styles.tableRow}>
+    <div className={`${styles.tableCell} ${styles.tableStateCell}`}>
       <span className={styles.tableStateMessage}>{message}</span>
-    </td>
-  </tr>
+    </div>
+  </div>
 );
 
 interface IIndividualTableProps {
@@ -23,42 +22,39 @@ interface IIndividualTableProps {
 }
 
 const IndividualTable: React.FC<IIndividualTableProps> = ({ rows, status }) => (
-<>
-  <p className={styles.subtitle}>TOP 20 RANKING</p>
-  <div className={styles.tableWrapper}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th className={styles.rankHeader} aria-label="Rank" />
-            <th>Name</th>
-            <th>LOBT</th>
-            <th className={styles.xpHeader}>XP</th>
-          </tr>
-        </thead>
-        <tbody>
+  <>
+    <p className={styles.subtitle}>TOP 20 RANKING</p>
+    <div className={styles.tableWrapper}>
+      <div className={styles.table}>
+        <div className={styles.tableHead}>
+          <div className={styles.tableRow}>
+            <div className={`${styles.tableCell} ${styles.colRank}`} aria-label="Rank" />
+            <div className={`${styles.tableCell} ${styles.colName}`}>Name</div>
+            <div className={`${styles.tableCell} ${styles.colLobt}`}>LOBT</div>
+            <div className={`${styles.tableCell} ${styles.colXp}`}>XP</div>
+          </div>
+        </div>
+        <div className={styles.tableBody}>
           {status === 'loading' && (
-            <TableStateRow colSpan={4} message="Loading leaderboard..." />
+            <TableStateRow message="Loading leaderboard..." />
           )}
           {status === 'error' && (
-            <TableStateRow
-              colSpan={4}
-              message="Unable to load leaderboard data. Please refresh the page or try again later."
-            />
+            <TableStateRow message="Unable to load leaderboard data. Please refresh the page or try again later." />
           )}
           {status === 'ready' && rows.map((row) => (
-            <tr key={`individual-${row.rank}`}>
-              <td className={styles.rankCell}>
+            <div className={styles.tableRow} key={`individual-${row.rank}`}>
+              <div className={`${styles.tableCell} ${styles.colRank}`}>
                 <span className={styles.rankBadge}>{row.rank}</span>
-              </td>
-              <td>{row.name}</td>
-              <td>{row.lobt}</td>
-              <td className={styles.xpCell}>{row.xp}</td>
-            </tr>
+              </div>
+              <div className={`${styles.tableCell} ${styles.colName}`}>{row.name}</div>
+              <div className={`${styles.tableCell} ${styles.colLobt}`}>{row.lobt}</div>
+              <div className={`${styles.tableCell} ${styles.colXp}`}>{row.xp}</div>
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
     </div>
-</>
+  </>
 );
 
 interface ILobtTableProps {
@@ -70,35 +66,34 @@ const LobtTable: React.FC<ILobtTableProps> = ({ rows, status }) => (
   <>
     <p className={styles.subtitle}>TOP 5 RANKING</p>
     <div className={styles.tableWrapper}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th className={styles.rankHeader} aria-label="Rank" />
-            <th>LOBT</th>
-            <th className={styles.xpHeader}>XP</th>
-          </tr>
-        </thead>
-        <tbody>
+      <div className={styles.table}>
+        <div className={styles.tableHead}>
+          <div className={styles.tableRow}>
+            <div className={`${styles.tableCell} ${styles.colRank}`} aria-label="Rank" />
+            <div className={`${styles.tableCell} ${styles.colLobtTab}`}>LOBT</div>
+            <div className={`${styles.tableCell} ${styles.colPlayerCount}`}>Players</div>
+            <div className={`${styles.tableCell} ${styles.colXpLobt}`}>XP</div>
+          </div>
+        </div>
+        <div className={styles.tableBody}>
           {status === 'loading' && (
-            <TableStateRow colSpan={3} message="Loading leaderboard..." />
+            <TableStateRow message="Loading leaderboard..." />
           )}
           {status === 'error' && (
-            <TableStateRow
-              colSpan={3}
-              message="Unable to load leaderboard data. Please refresh the page or try again later."
-            />
+            <TableStateRow message="Unable to load leaderboard data. Please refresh the page or try again later." />
           )}
           {status === 'ready' && rows.map((row) => (
-            <tr key={`lobt-${row.rank}`}>
-              <td className={styles.rankCell}>
+            <div className={styles.tableRow} key={`lobt-${row.rank}`}>
+              <div className={`${styles.tableCell} ${styles.colRank}`}>
                 <span className={styles.rankBadge}>{row.rank}</span>
-              </td>
-              <td>{row.lobt}</td>
-              <td className={styles.xpCell}>{row.xp}</td>
-            </tr>
+              </div>
+              <div className={`${styles.tableCell} ${styles.colLobtTab}`}>{row.lobt}</div>
+              <div className={`${styles.tableCell} ${styles.colPlayerCount}`}>{row.playerCount}</div>
+              <div className={`${styles.tableCell} ${styles.colXpLobt}`}>{row.xp}</div>
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
     </div>
   </>
 );

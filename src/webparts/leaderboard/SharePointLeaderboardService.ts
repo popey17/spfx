@@ -127,8 +127,8 @@ export class SharePointLeaderboardService implements ILeaderboardService {
 
   private async _sumXpByLobtTypes(
     lobtTypes: LobtTypeRow[]
-  ): Promise<Array<{ lobt: string; xp: number; orderNo: number }>> {
-    const totals: Array<{ lobt: string; xp: number; orderNo: number }> = [];
+  ): Promise<Array<{ lobt: string; xp: number; orderNo: number; playerCount: number }>> {
+    const totals: Array<{ lobt: string; xp: number; orderNo: number; playerCount: number }> = [];
 
     for (let i = 0; i < lobtTypes.length; i++) {
       const lobtType = lobtTypes[i];
@@ -136,7 +136,8 @@ export class SharePointLeaderboardService implements ILeaderboardService {
       totals.push({
         lobt: lobtType.title,
         xp: summary.totalXp,
-        orderNo: lobtType.orderNo
+        orderNo: lobtType.orderNo,
+        playerCount: summary.userCount
       });
 
       console.log(

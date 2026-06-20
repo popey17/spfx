@@ -112,12 +112,12 @@ $font-stack: 'Francois One', sans-serif;
   display: flex;
   justify-content: center;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .tabButton {
   min-width: 160px;
-  padding: 15px 36px;
+  padding: clamp(10px,  1vw, 15px) clamp(20px, 2.5vw, 36px);
   color: $text;
   font-size: clamp(14px, 2.5vw, 32px);
   font-weight: 700;
@@ -143,7 +143,7 @@ $font-stack: 'Francois One', sans-serif;
 }
 
 .subtitle {
-  margin: 0 0 16px;
+  margin: 0 0 30px;
   text-align: center; 
   font-size: clamp(18px, 2.5vw, 52px);
   font-weight: 700;
@@ -151,10 +151,9 @@ $font-stack: 'Francois One', sans-serif;
 }
 
 .tableWrapper {
-  max-height: 280px;
   overflow-y: auto;
   padding-right: 4px;
-  min-height: calc(( 388 / 852 ) * 100%);
+  max-height: calc(( 396 / 755 ) * 100%);
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -167,9 +166,11 @@ $font-stack: 'Francois One', sans-serif;
 }
 
 .tableStateCell {
+  flex: 1 1 100%;
   padding: 48px 16px !important;
   text-align: center;
   background: transparent !important;
+  justify-content: center;
 }
 
 .tableStateMessage {
@@ -181,113 +182,128 @@ $font-stack: 'Francois One', sans-serif;
 
 .table {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0 6px;
+}
 
-  thead {
-    position: sticky;
-    top: 0;
-    z-index: 1;
+.tableHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+
+  .tableRow {
+    background: $header-bg;
     border-radius: 9px;
   }
-
-  thead tr {
-    background: $header-bg;
-  }
-
-  th {
-    padding: 10px 12px;
-    text-align: left;
-    font-size: clamp(14px, 2.5vw, 24px);
-    font-weight: 900;
-    letter-spacing: 0.04em;
-    font-family: 'Open Sans', sans-serif;
-    text-transform: uppercase;
-  }
-
-  tbody tr {
-    background: $row-bg;
-  }
-
-  td {
-    padding: 12px;
-    font-size: clamp(14px, 2.5vw, 24px);
-    font-family: 'Open Sans', sans-serif;
-    font-weight: 900;
-    vertical-align: middle;
-    word-break: break-word;
-  }
-
-  th:nth-child(2),
-  td:nth-child(2) {
-    width: 30%;
-  }
-
-  th:nth-child(3),
-  td:nth-child(3) {
-    width: 38%;
-  }
 }
 
-.rankHeader {
-  width: 56px;
+.tableBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
 }
 
-.xpHeader,
-.xpCell {
-  text-align: right;
-  width: 18%;
+.tableRow {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
 }
 
-.rankCell {
-  width: 56px;
-  text-align: center;
+.tableBody .tableRow {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+}
+
+.tableCell {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  font-size: clamp(14px, 2.5vw, 24px);
+  font-family: 'Open Sans', sans-serif;
+  font-weight: 900;
+  word-break: break-word;
+  min-width: 0;
+}
+
+.tableHead .tableCell {
+  padding: 12px 12px;
+  text-align: left;
+  font-size: clamp(14px, 2.5vw, 24px);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.colRank {
+  width: calc(( 150 / 1220 ) * 100%);
+}
+
+.colName {
+  width: calc(( 300 / 1220 ) * 100%);
+}
+
+.colLobt {
+  flex: 0 0 38%;
+  width: 38%;
+}
+
+.colLobtTab {
+  flex: 1;
+}
+
+.colPlayerCount {
+  flex: 1;
+}
+
+.colXp {
+  width: calc(( 270 / 1220 ) * 100%);
+}
+
+.colXpLobt {
+  width: calc(( 270 / 1220 ) * 100%);
 }
 
 .rankBadge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: calc(( 52 / 122 ) * 100%);
+  aspect-ratio: 52 / 52;
+  height: auto;
   border-radius: 50%;
   background: $rank-red;
   color: $text;
-  font-size: 13px;
+  font-size: clamp(14px, 2.5vw, 29px);
   font-weight: 700;
 }
 
 .scrollIndicator {
-  width: 0;
-  height: 0;
-  margin: 14px auto 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-top: 10px solid $text;
-  opacity: 0.85;
+  width: calc(( 37 / 1370 ) * 100%);
+  height: calc(( 22 / 755 ) * 100%);
+  margin: 33px auto 0;
+  background: url("data:image/svg+xml,%3Csvg%20width%3D%2227%22%20height%3D%2216%22%20viewBox%3D%220%200%2027%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cpath%20d%3D%22M14.7308%2015.0223C13.9452%2015.8313%2012.6466%2015.8313%2011.861%2015.0223L0.569269%203.39325C-0.662128%202.12507%200.236482%20-1.05569e-06%202.00414%20-1.21022e-06L24.5877%20-3.18453e-06C26.3553%20-3.33907e-06%2027.2539%202.12507%2026.0225%203.39325L14.7308%2015.0223Z%22%20fill%3D%22white%22/%3E%3C/svg%3E") no-repeat center center;
+  background-size: contain;
+  background-position: center center;
+  background-repeat: no-repeat;
 }
 
-@media (max-width: 640px) {
-  .panel {
-    padding: 48px 16px 28px;
-  }
+// @media (max-width: 640px) {
+//   .panel {
+//     padding: 48px 16px 28px;
+//   }
 
-  .tabButton {
-    min-width: 0;
-    flex: 1;
-    padding: 10px 12px;
-    font-size: 12px;
-  }
+//   .tabButton {
+//     min-width: 0;
+//     flex: 1;
+//     padding: 10px 12px;
+//     font-size: 12px;
+//   }
 
-  .headerTitle {
-    font-size: 18px;
-  }
+//   .headerTitle {
+//     font-size: 18px;
+//   }
 
-  .table {
-    th,
-    td {
-      padding: 10px 8px;
-      font-size: 13px;
-    }
-  }
-}
+//   .tableCell {
+//     padding: 10px 8px;
+//     font-size: 13px;
+//   }
+// }

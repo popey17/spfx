@@ -33,7 +33,7 @@ export function buildIndividualRanking(rows: UsersListRow[], topCount: number): 
 }
 
 export function buildLobtRankingFromTotals(
-  totals: Array<{ lobt: string; xp: number; orderNo?: number }>,
+  totals: Array<{ lobt: string; xp: number; orderNo?: number; playerCount?: number }>,
   topCount: number
 ): LobtLeaderboardEntry[] {
   const sorted = totals
@@ -59,6 +59,7 @@ export function buildLobtRankingFromTotals(
     result.push({
       rank: i + 1,
       lobt: sorted[i].lobt,
+      playerCount: sorted[i].playerCount ?? 0,
       xp: sorted[i].xp
     });
   }
@@ -67,7 +68,7 @@ export function buildLobtRankingFromTotals(
 }
 
 function buildLobtRankingFromUsers(rows: UsersListRow[], topCount: number): LobtLeaderboardEntry[] {
-  const totalsByLobt: Array<{ lobt: string; xp: number }> = [];
+  const totalsByLobt: Array<{ lobt: string; xp: number; playerCount: number }> = [];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -81,13 +82,14 @@ function buildLobtRankingFromUsers(rows: UsersListRow[], topCount: number): Lobt
     for (let j = 0; j < totalsByLobt.length; j++) {
       if (totalsByLobt[j].lobt === lobt) {
         totalsByLobt[j].xp += row.totalXp;
+        totalsByLobt[j].playerCount += 1;
         found = true;
         break;
       }
     }
 
     if (!found) {
-      totalsByLobt.push({ lobt, xp: row.totalXp });
+      totalsByLobt.push({ lobt, xp: row.totalXp, playerCount: 1 });
     }
   }
 

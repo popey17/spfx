@@ -45,6 +45,7 @@ function buildMockLobtRanking(): LobtLeaderboardEntry[] {
   return MOCK_LOBT_NAMES.map((lobt, index) => ({
     rank: index + 1,
     lobt,
+    playerCount: 48 - index * 7,
     xp: 48250 - index * 4210
   }));
 }
