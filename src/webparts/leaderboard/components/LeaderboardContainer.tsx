@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import type { ILeaderboardService } from '../ILeaderboardService';
 import { ensureFrancoisOneFont } from '../leaderboardFont';
-import type { LeaderboardData } from '../leaderboardTypes';
+import type { LeaderboardData, LeaderboardTab } from '../leaderboardTypes';
 import Leaderboard, { type LeaderboardViewStatus } from './Leaderboard';
 
 export interface ILeaderboardContainerProps {
@@ -16,6 +16,7 @@ type LoadState =
 
 const LeaderboardContainer: React.FC<ILeaderboardContainerProps> = ({ loadLeaderboard }) => {
   const [state, setState] = React.useState<LoadState>({ status: 'loading' });
+  const [activeTab, setActiveTab] = React.useState<LeaderboardTab>('individual');
 
   React.useEffect(() => {
     ensureFrancoisOneFont();
@@ -23,6 +24,8 @@ const LeaderboardContainer: React.FC<ILeaderboardContainerProps> = ({ loadLeader
 
   React.useEffect(() => {
     let cancelled = false;
+
+    setState({ status: 'loading' });
 
     loadLeaderboard()
       .then((data) => {
@@ -40,7 +43,7 @@ const LeaderboardContainer: React.FC<ILeaderboardContainerProps> = ({ loadLeader
     return () => {
       cancelled = true;
     };
-  }, [loadLeaderboard]);
+  }, [loadLeaderboard, activeTab]);
 
   const viewStatus: LeaderboardViewStatus = state.status;
 
@@ -48,6 +51,8 @@ const LeaderboardContainer: React.FC<ILeaderboardContainerProps> = ({ loadLeader
     <Leaderboard
       status={viewStatus}
       data={state.status === 'ready' ? state.data : undefined}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
     />
   );
 };

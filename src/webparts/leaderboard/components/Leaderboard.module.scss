@@ -192,11 +192,29 @@ $design-inner-height: 834;
   justify-content: center;
 }
 
+.tableStateCellLoading {
+  padding: calc((72 / #{$design-width}) * 100cqi) calc((16 / #{$design-width}) * 100cqi) !important;
+}
+
+.tableStateRowLoading {
+  background: transparent !important;
+}
+
 .tableStateMessage {
   display: inline-block;
   font-size: clamp(13px, calc((15 / #{$design-width}) * 100cqi), 15px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.88);
+}
+
+.tableStateMessageLoading {
+  font-family: $font-stack;
+  font-size: clamp(24px, calc((40 / #{$design-width}) * 100cqi), 40px);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: $text;
+  text-shadow: 0 calc((2 / #{$design-width}) * 100cqi) 0 rgba(0, 0, 0, 0.35);
 }
 
 .table {
