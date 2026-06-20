@@ -14,7 +14,11 @@ const arrowUpUrl: string = require('./assets/img_arrowUp.png');
 const starUrl: string = require('./assets/img_star.png');
 const heartUrl: string = require('./assets/img_heart.png');
 const heartLostUrl: string = require('./assets/img_heartLost.png');
+const storeBgUrl: string = require('./assets/img_storeBg.png');
 const levelPassRaccoonUrl: string = require('./assets/img_lvlpassRacoon.png');
+const backBtnUrl: string = require('./assets/img_back.png');
+const muteBtnUrl: string = require('./assets/img_mute.png');
+const soundBtnUrl: string = require('./assets/img_sound.png');
 const coinSoundUrl: string = require('./assets/sound/coin.mp3');
 const crushSoundUrl: string = require('./assets/sound/crush.mp3');
 const alarmSoundUrl: string = require('./assets/sound/alarm.mp3');
@@ -48,12 +52,17 @@ import {
   MENU_PANEL,
   WELCOME_MENU,
   getWelcomeMenuLayout,
+  HOME_BUTTON,
+  BACK_BTN_NATIVE,
+  MUTE_BUTTON,
+  MUTE_BTN_NATIVE,
   GAME_OVER_MENU,
   PAUSE_MENU,
   QUESTION_POPUP,
   ANSWER_FEEDBACK_MS,
   ANSWER_CORRECT_TINT,
   ANSWER_WRONG_TINT,
+  WRONG_ANSWER_SCREEN_SHAKE,
   COUNTDOWN_MS,
   COUNTDOWN,
   LEVEL_INTRO,
@@ -68,6 +77,7 @@ import {
   MENU_BACKDROP,
   BUTTON_BG_NATIVE,
   BUTTON_BG_SLICES,
+  MENU_BUTTON_HOVER,
   font,
   PLAYER_X,
   PLAYER_HEIGHT,
@@ -97,13 +107,23 @@ import {
   WELCOME_PANEL_FILL,
   MUSIC_VOLUME,
   SFX_VOLUME,
-  SHIELD_SPAWN_INTERVAL_MS,
+  QUESTION_INTERVAL_MS,
+  SHIELD_SPAWN_MIN_MS,
+  SHIELD_SPAWN_MAX_MS,
+  POWER_SHIELD_DURATION_MS,
+  POWER_SHIELD_BLINK,
   GAME_SPEED_INITIAL,
   GAME_SPEED_INCREMENT,
   GAME_SPEED_MAX,
   DEBUG_SPAWN_SHIELD_FIRST,
   DEBUG_AUTO_COLLECT_SHIELDS,
   DEBUG_FORCE_FREE_MODE,
+  DEBUG_FORCE_ZERO_HEARTS,
+  MAIN_SHOP_MENU,
+  GAME_OVER_SHOP_MENU,
+  SHOP_MENU_LAYOUT,
+  STORE_BG_NATIVE,
+  type ShopMenuConfig,
   DEBUG_SHOW_LEVEL_COMPLETE_AT_START,
   SPAWN_RETRY_DELAY_MS,
   SPAWN_POSITION_ATTEMPTS,
@@ -136,9 +156,15 @@ import type { IPlayerProgressService } from './IPlayerProgressService';
 import {
   createEmptyEarnedQuestionSlots,
   createDefaultPlayerProgress,
+  createDefaultGameAchievementData,
+  applyAchievementSessionUpdate,
   getLevelXpFromSlots,
+  getDailyHeartsDayKey,
+  resolveDailyHearts,
+  type GameAchievementData,
   type PlayerProgressRecord
 } from './playerProgressTypes';
+import { redirectToHomePage } from './registrationRedirect';
 
 
 /**
@@ -163,6 +189,8 @@ export class EndlessRunnerGame {
   private readonly _boundGameLoop: (timestamp: number) => void;
   private readonly _boundPointerDown: (event: PointerEvent) => void;
   private readonly _boundPointerUp: (event: PointerEvent) => void;
+  private readonly _boundPointerMove: (event: PointerEvent) => void;
+  private readonly _boundPointerLeave: (event: PointerEvent) => void;
   private readonly _boundClick: (event: MouseEvent) => void;
   private readonly _boundUnlockAudio: () => void;
   private readonly _playerWidth: number;
@@ -172,7 +200,14 @@ export class EndlessRunnerGame {
   private _lastTimestamp: number = 0;
   private _state: GameState = 'waiting';
   private _score: number = 0;
-  private _lives: number = MAX_LIVES;
+  private _dailyHeartsRemaining: number = MAX_LIVES;
+  private _dailyHeartsDay: string = getDailyHeartsDayKey();
+  private _heartsSaving: boolean = false;
+  private _shopPurchaseSaving: boolean = false;
+  private _shopMessage: string | undefined;
+  private _shopMessageEndsAt: number = 0;
+  private _totalCoins: number = 0;
+  private _gameOverShowsShop: boolean = false;
   private _playerY: number = 0;
   private _movement: number = 0;
   private _touchMovement: number = 0;
@@ -186,7 +221,11 @@ export class EndlessRunnerGame {
   private _confettiParticles: ConfettiParticle[] = [];
   private _nextObstacleAt: number = 0;
   private _nextCoinAt: number = 0;
-  private _nextShieldAt: number = 0;
+  private _questionTimerMs: number = 0;
+  private _shieldTimerMs: number = 0;
+  private _nextShieldSpawnDelayMs: number = SHIELD_SPAWN_MIN_MS;
+  private _powerShieldEndsAt: number = 0;
+  private _grantPowerShieldOnResume: boolean = false;
   private _spawnClockMs: number = 0;
   private _gameSpeedMultiplier: number = GAME_SPEED_INITIAL;
   private _currentLevel: number = 1;
@@ -218,11 +257,17 @@ export class EndlessRunnerGame {
   private _sessionProgressSaved: boolean = false;
   private _sessionProgressSaving: boolean = false;
   private _coinsPersistedScore: number = 0;
+  private _achievementData: GameAchievementData = createDefaultGameAchievementData();
+  private _sessionHeartsLost: number = 0;
   private _disposed: boolean = false;
   private _lastCanvasPressAt: number = 0;
+  private _pointerCanvasX: number | undefined;
+  private _pointerCanvasY: number | undefined;
+  private _menuFocusIndex: number = 0;
   private _showPauseMainMenuConfirm: boolean = false;
   private _answerFeedback: { index: number; correct: boolean } | undefined;
   private _answerFeedbackTimerId: number | undefined;
+  private _screenShakeEndsAt: number = 0;
   private _countdownEndsAt: number = 0;
   private _levelIntroEndsAt: number = 0;
   private _levelStartScore: number = 0;
@@ -234,6 +279,7 @@ export class EndlessRunnerGame {
   private _cheatPizzaParty: boolean = false;
   private _pendingPizzaConfetti: boolean = false;
   private _audioUnlocked: boolean = false;
+  private _musicMuted: boolean = false;
 
   constructor(target: HTMLElement, options: EndlessRunnerGameOptions = {}) {
     this._progressService = options.progressService;
@@ -251,6 +297,8 @@ export class EndlessRunnerGame {
     this._boundGameLoop = this._gameLoop.bind(this);
     this._boundPointerDown = this._onPointerDown.bind(this);
     this._boundPointerUp = this._onPointerUp.bind(this);
+    this._boundPointerMove = this._onPointerMove.bind(this);
+    this._boundPointerLeave = this._onPointerLeave.bind(this);
     this._boundClick = this._onClick.bind(this);
     this._boundUnlockAudio = this._unlockAudio.bind(this);
     this._menuMusic = this._createAudio(menuMusicUrl, MUSIC_VOLUME, true);
@@ -301,6 +349,8 @@ export class EndlessRunnerGame {
     this._canvas.addEventListener('pointerdown', this._boundPointerDown);
     this._canvas.addEventListener('pointerup', this._boundPointerUp);
     this._canvas.addEventListener('pointercancel', this._boundPointerUp);
+    this._canvas.addEventListener('pointermove', this._boundPointerMove);
+    this._canvas.addEventListener('pointerleave', this._boundPointerLeave);
     this._canvas.addEventListener('click', this._boundClick);
 
     if (typeof ResizeObserver !== 'undefined') {
@@ -314,6 +364,11 @@ export class EndlessRunnerGame {
     this._loadAssets().catch(() => {
       // Sprites fall back to primitive shapes if asset loading fails.
     });
+
+    if (DEBUG_FORCE_ZERO_HEARTS) {
+      this._applyDebugHeartsOverride();
+      this._openShop();
+    }
   }
 
   public dispose(): void {
@@ -330,6 +385,8 @@ export class EndlessRunnerGame {
     this._canvas.removeEventListener('pointerdown', this._boundPointerDown);
     this._canvas.removeEventListener('pointerup', this._boundPointerUp);
     this._canvas.removeEventListener('pointercancel', this._boundPointerUp);
+    this._canvas.removeEventListener('pointermove', this._boundPointerMove);
+    this._canvas.removeEventListener('pointerleave', this._boundPointerLeave);
     this._canvas.removeEventListener('click', this._boundClick);
     this._removeAudioUnlockListeners();
     this._resizeObserver?.disconnect();
@@ -379,9 +436,13 @@ export class EndlessRunnerGame {
       this._loadImage(starUrl),
       this._loadImage(heartUrl),
       this._loadImage(heartLostUrl),
+      this._loadImage(storeBgUrl),
       this._loadImage(levelPassRaccoonUrl),
+      this._loadImage(backBtnUrl),
+      this._loadImage(muteBtnUrl),
+      this._loadImage(soundBtnUrl),
       Promise.all(obstacleUrls.map((url) => this._loadImage(url)))
-    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, heart, heartLost, levelPassRaccoon, obstacles]) => {
+    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, heart, heartLost, storeBackground, levelPassRaccoon, backButton, muteButton, soundButton, obstacles]) => {
       this._assets = {
         background,
         character,
@@ -398,7 +459,11 @@ export class EndlessRunnerGame {
         star,
         heart,
         heartLost,
+        storeBackground,
         levelPassRaccoon,
+        backButton,
+        muteButton,
+        soundButton,
         obstacles,
         obstacleMeta: OBSTACLE_NATIVE,
         characterMeta: CHARACTER_SPRITE_NATIVE,
@@ -409,7 +474,11 @@ export class EndlessRunnerGame {
         pauseButtonMeta: PAUSE_BTN_NATIVE,
         arrowUpMeta: ARROW_KEY_NATIVE,
         starMeta: STAR_NATIVE,
+        storeBackgroundMeta: STORE_BG_NATIVE,
         levelPassRaccoonMeta: LEVEL_PASS_RACCOON_NATIVE,
+        backButtonMeta: BACK_BTN_NATIVE,
+        muteButtonMeta: MUTE_BTN_NATIVE,
+        soundButtonMeta: MUTE_BTN_NATIVE,
         speechBubbleMeta: { width: 600, height: 321 }
       };
     });
@@ -535,6 +604,378 @@ export class EndlessRunnerGame {
     return x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
   }
 
+  private _resetMenuFocus(): void {
+    this._menuFocusIndex = 0;
+  }
+
+  private _isMenuNavigationState(): boolean {
+    return (
+      this._state === 'waiting' ||
+      this._state === 'gameover' ||
+      this._state === 'paused' ||
+      this._state === 'levelComplete' ||
+      this._state === 'question' ||
+      this._state === 'shop'
+    );
+  }
+
+  private _getMenuButtonCount(): number {
+    if (this._state === 'waiting') {
+      return this._freeModeUnlocked ? WELCOME_MENU.freeMode.difficulty.labels.length + 1 : 1;
+    }
+
+    if (this._state === 'gameover') {
+      return this._getGameOverMenuButtonCount();
+    }
+
+    if (this._state === 'paused') {
+      if (this._showPauseMainMenuConfirm) {
+        return 2;
+      }
+
+      return PAUSE_MENU.showMainMenuButton ? 2 : 1;
+    }
+
+    if (this._state === 'levelComplete') {
+      return 1;
+    }
+
+    if (this._state === 'question') {
+      return this._getCurrentQuestion()?.options.length ?? 0;
+    }
+
+    if (this._state === 'shop') {
+      return MAIN_SHOP_MENU.buyOptions.length + 1;
+    }
+
+    return 0;
+  }
+
+  private _getMenuButtonBounds(index: number): { x: number; y: number; width: number; height: number } | undefined {
+    if (this._state === 'waiting') {
+      const difficultyCount = WELCOME_MENU.freeMode.difficulty.labels.length;
+
+      if (this._freeModeUnlocked && index < difficultyCount) {
+        return this._getWelcomeDifficultyButtonBounds(index);
+      }
+
+      if (index === (this._freeModeUnlocked ? difficultyCount : 0)) {
+        return this._getStartButtonBounds();
+      }
+
+      return undefined;
+    }
+
+    if (this._state === 'gameover') {
+      return this._getGameOverMenuButtonBounds(index);
+    }
+
+    if (this._state === 'paused') {
+      if (this._showPauseMainMenuConfirm) {
+        return index === 0 || index === 1 ? this._getPauseConfirmButtonBounds(index) : undefined;
+      }
+
+      return this._getPauseMenuButtonBounds(index);
+    }
+
+    if (this._state === 'levelComplete') {
+      return index === 0 ? this._getLevelCompleteProceedButtonBounds() : undefined;
+    }
+
+    if (this._state === 'question') {
+      return this._getAnswerButtonBounds(index);
+    }
+
+    if (this._state === 'shop') {
+      const buyCount = MAIN_SHOP_MENU.buyOptions.length;
+
+      if (index < buyCount) {
+        return this._getShopPriceButtonBounds(MAIN_SHOP_MENU, index);
+      }
+
+      if (index === buyCount) {
+        return this._getShopFooterButtonBounds(MAIN_SHOP_MENU);
+      }
+
+      return undefined;
+    }
+
+    return undefined;
+  }
+
+  private _getHoveredMenuButtonIndex(): number {
+    if (
+      this._pointerCanvasX === undefined ||
+      this._pointerCanvasY === undefined ||
+      !this._isMenuNavigationState()
+    ) {
+      return -1;
+    }
+
+    const count = this._getMenuButtonCount();
+
+    for (let i = 0; i < count; i++) {
+      const bounds = this._getMenuButtonBounds(i);
+
+      if (bounds && this._isPointInRect(this._pointerCanvasX, this._pointerCanvasY, bounds)) {
+        return i;
+      }
+    }
+
+    return -1;
+  }
+
+  private _getMenuButtonInteraction(index: number): {
+    focused: boolean;
+    hovered: boolean;
+    highlighted: boolean;
+  } {
+    const focused =
+      this._state === 'question' ? this._selectedAnswerIndex === index : this._menuFocusIndex === index;
+    const hovered = this._getHoveredMenuButtonIndex() === index;
+
+    return {
+      focused,
+      hovered,
+      highlighted: focused || hovered
+    };
+  }
+
+  private _activateMenuButton(index: number): void {
+    if (this._state === 'waiting') {
+      const difficultyCount = WELCOME_MENU.freeMode.difficulty.labels.length;
+
+      if (this._freeModeUnlocked && index < difficultyCount) {
+        this._freeModeDifficulty = index + 1;
+        return;
+      }
+
+      this._tryStartGame();
+      return;
+    }
+
+    if (this._state === 'gameover') {
+      if (this._gameOverShowsShop) {
+        const buyCount = GAME_OVER_SHOP_MENU.buyOptions.length;
+
+        if (index < buyCount) {
+          this._tryShopPurchase(GAME_OVER_SHOP_MENU, index, () => {
+            if (this._dailyHeartsRemaining > 0) {
+              this._gameOverShowsShop = false;
+              this._tryStartGame();
+            }
+          });
+          return;
+        }
+
+        if (index === buyCount) {
+          this._goToMainMenu();
+        }
+
+        return;
+      }
+
+      if (index === 0) {
+        this._tryStartGame();
+      } else if (index === 1) {
+        this._goToMainMenu();
+      }
+
+      return;
+    }
+
+    if (this._state === 'paused') {
+      if (this._showPauseMainMenuConfirm) {
+        if (index === 0) {
+          this._showPauseMainMenuConfirm = false;
+        } else if (index === 1) {
+          this._showPauseMainMenuConfirm = false;
+          this._goToMainMenu();
+        }
+
+        return;
+      }
+
+      if (index === 0) {
+        this._resumeFromPause();
+      } else if (index === 1) {
+        this._showPauseMainMenuConfirm = true;
+        this._resetMenuFocus();
+      }
+
+      return;
+    }
+
+    if (this._state === 'levelComplete') {
+      this._proceedFromLevelComplete();
+      return;
+    }
+
+    if (this._state === 'question' && !this._answerFeedback) {
+      this._handleAnswer(index);
+    }
+
+    if (this._state === 'shop') {
+      const buyCount = MAIN_SHOP_MENU.buyOptions.length;
+
+      if (index < buyCount) {
+        this._tryShopPurchase(MAIN_SHOP_MENU, index, () => {
+          if (this._dailyHeartsRemaining > 0) {
+            this._tryStartGame();
+          }
+        });
+        return;
+      }
+
+      if (index === buyCount) {
+        this._closeShop();
+      }
+
+      return;
+    }
+  }
+
+  private _handleMenuKeyboard(event: KeyboardEvent): boolean {
+    if (!this._isMenuNavigationState()) {
+      return false;
+    }
+
+    if (this._state === 'question' && this._answerFeedback) {
+      return false;
+    }
+
+    const count = this._getMenuButtonCount();
+
+    if (count <= 0) {
+      return false;
+    }
+
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault();
+
+      if (this._state === 'question') {
+        this._selectedAnswerIndex = (this._selectedAnswerIndex - 1 + count) % count;
+      } else {
+        this._menuFocusIndex = (this._menuFocusIndex - 1 + count) % count;
+      }
+
+      return true;
+    }
+
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault();
+
+      if (this._state === 'question') {
+        this._selectedAnswerIndex = (this._selectedAnswerIndex + 1) % count;
+      } else {
+        this._menuFocusIndex = (this._menuFocusIndex + 1) % count;
+      }
+
+      return true;
+    }
+
+    if (event.key === 'Tab') {
+      event.preventDefault();
+
+      if (this._state === 'question') {
+        this._selectedAnswerIndex = event.shiftKey
+          ? (this._selectedAnswerIndex - 1 + count) % count
+          : (this._selectedAnswerIndex + 1) % count;
+      } else {
+        this._menuFocusIndex = event.shiftKey
+          ? (this._menuFocusIndex - 1 + count) % count
+          : (this._menuFocusIndex + 1) % count;
+      }
+
+      return true;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      const index = this._state === 'question' ? this._selectedAnswerIndex : this._menuFocusIndex;
+      this._activateMenuButton(index);
+      return true;
+    }
+
+    if (this._state === 'question') {
+      if (event.key === '1' || event.key === 'Numpad1') {
+        event.preventDefault();
+        this._handleAnswer(0);
+        return true;
+      }
+
+      if (event.key === '2' || event.key === 'Numpad2') {
+        event.preventDefault();
+        this._handleAnswer(1);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private _updatePointerPosition(clientX: number, clientY: number): void {
+    const point = this._canvasPointFromClient(clientX, clientY);
+    this._pointerCanvasX = point.x;
+    this._pointerCanvasY = point.y;
+
+    const hoveredIndex = this._getHoveredMenuButtonIndex();
+
+    if (hoveredIndex >= 0) {
+      if (this._state === 'question') {
+        this._selectedAnswerIndex = hoveredIndex;
+      } else {
+        this._menuFocusIndex = hoveredIndex;
+      }
+    }
+  }
+
+  private _clearPointerPosition(): void {
+    this._pointerCanvasX = undefined;
+    this._pointerCanvasY = undefined;
+  }
+
+  private _getButtonHoverScale(timestamp: number, highlighted: boolean): number {
+    if (!highlighted) {
+      return 1;
+    }
+
+    return (
+      MENU_BUTTON_HOVER.baseScale +
+      Math.sin(timestamp * MENU_BUTTON_HOVER.pulseSpeed) * MENU_BUTTON_HOVER.pulseAmplitude
+    );
+  }
+
+  private _drawWithButtonHoverTransform(
+    bounds: { x: number; y: number; width: number; height: number },
+    timestamp: number,
+    highlighted: boolean,
+    draw: (drawBounds: { x: number; y: number; width: number; height: number }) => void
+  ): void {
+    if (!highlighted) {
+      draw(bounds);
+      return;
+    }
+
+    const lift = s(MENU_BUTTON_HOVER.liftPx);
+    const drawBounds = {
+      x: bounds.x,
+      y: bounds.y - lift,
+      width: bounds.width,
+      height: bounds.height
+    };
+    const centerX = drawBounds.x + drawBounds.width / 2;
+    const centerY = drawBounds.y + drawBounds.height / 2;
+    const scale = this._getButtonHoverScale(timestamp, true);
+
+    this._ctx.save();
+    this._ctx.translate(centerX, centerY);
+    this._ctx.scale(scale, scale);
+    this._ctx.translate(-centerX, -centerY);
+    draw(drawBounds);
+    this._ctx.restore();
+  }
+
   private _handleCanvasPress(clientX: number, clientY: number): boolean {
     const now = performance.now();
     if (now - this._lastCanvasPressAt < 300) {
@@ -542,6 +983,46 @@ export class EndlessRunnerGame {
     }
 
     const point = this._canvasPointFromClient(clientX, clientY);
+
+    if (this._state === 'waiting' || this._state === 'shop' || this._state === 'paused') {
+      if (this._isPointInRect(point.x, point.y, this._getMuteButtonBounds())) {
+        this._lastCanvasPressAt = now;
+        this._toggleMusicMute();
+        return true;
+      }
+    }
+
+    if (this._state === 'waiting' || this._state === 'shop') {
+      if (this._isPointInRect(point.x, point.y, this._getHomeButtonBounds())) {
+        this._lastCanvasPressAt = now;
+        redirectToHomePage();
+        return true;
+      }
+    }
+
+    if (this._state === 'shop') {
+      const buyCount = MAIN_SHOP_MENU.buyOptions.length;
+
+      for (let i = 0; i < buyCount; i++) {
+        if (this._isPointInRect(point.x, point.y, this._getShopPriceButtonBounds(MAIN_SHOP_MENU, i))) {
+          this._lastCanvasPressAt = now;
+          this._tryShopPurchase(MAIN_SHOP_MENU, i, () => {
+            if (this._dailyHeartsRemaining > 0) {
+              this._tryStartGame();
+            }
+          });
+          return true;
+        }
+      }
+
+      if (this._isPointInRect(point.x, point.y, this._getShopFooterButtonBounds(MAIN_SHOP_MENU))) {
+        this._lastCanvasPressAt = now;
+        this._closeShop();
+        return true;
+      }
+
+      return false;
+    }
 
     if (this._state === 'waiting') {
       if (this._freeModeUnlocked) {
@@ -557,23 +1038,22 @@ export class EndlessRunnerGame {
 
       if (this._isPointInRect(point.x, point.y, this._getStartButtonBounds())) {
         this._lastCanvasPressAt = now;
-        this._startGame();
+        this._tryStartGame();
         return true;
       }
       return false;
     }
 
     if (this._state === 'gameover') {
-      if (this._isPointInRect(point.x, point.y, this._getGameOverButtonBounds(0))) {
-        this._lastCanvasPressAt = now;
-        this._startGame();
-        return true;
-      }
+      const count = this._getGameOverMenuButtonCount();
 
-      if (this._isPointInRect(point.x, point.y, this._getGameOverButtonBounds(1))) {
-        this._lastCanvasPressAt = now;
-        this._goToMainMenu();
-        return true;
+      for (let i = 0; i < count; i++) {
+        const bounds = this._getGameOverMenuButtonBounds(i);
+        if (bounds && this._isPointInRect(point.x, point.y, bounds)) {
+          this._lastCanvasPressAt = now;
+          this._activateMenuButton(i);
+          return true;
+        }
       }
 
       return false;
@@ -694,6 +1174,14 @@ export class EndlessRunnerGame {
     }
   }
 
+  private _onPointerMove(event: PointerEvent): void {
+    this._updatePointerPosition(event.clientX, event.clientY);
+  }
+
+  private _onPointerLeave(): void {
+    this._clearPointerPosition();
+  }
+
   private _onClick(event: MouseEvent): void {
     this._unlockAudio();
     if (this._handleCanvasPress(event.clientX, event.clientY)) {
@@ -707,6 +1195,10 @@ export class EndlessRunnerGame {
 
   private _onKeyDown(event: KeyboardEvent): void {
     this._unlockAudio();
+
+    if (this._handleMenuKeyboard(event)) {
+      return;
+    }
 
     if (this._isEscapeKey(event)) {
       if (this._state === 'paused') {
@@ -742,63 +1234,6 @@ export class EndlessRunnerGame {
 
     if (this._state === 'paused' && !this._showPauseMainMenuConfirm) {
       this._handlePauseCheatInput(event);
-      return;
-    }
-
-    if (this._state === 'levelIntro' || this._state === 'countdown' || this._state === 'levelComplete') {
-      if (this._state === 'levelComplete' && (event.key === ' ' || event.key === 'Enter')) {
-        this._proceedFromLevelComplete();
-      }
-      return;
-    }
-
-    if (event.key === ' ') {
-      if (this._state === 'waiting') {
-        this._startGame();
-      }
-      return;
-    }
-
-    if (this._state === 'question') {
-      if (this._answerFeedback) {
-        return;
-      }
-
-      if (event.key === 'ArrowLeft') {
-        this._selectedAnswerIndex = 0;
-        return;
-      }
-
-      if (event.key === 'ArrowRight') {
-        this._selectedAnswerIndex = 1;
-        return;
-      }
-
-      if (event.key === 'ArrowUp') {
-        this._selectedAnswerIndex = 0;
-        return;
-      }
-
-      if (event.key === 'ArrowDown') {
-        this._selectedAnswerIndex = 1;
-        return;
-      }
-
-      if (event.key === 'Enter') {
-        this._handleAnswer(this._selectedAnswerIndex);
-        return;
-      }
-
-      if (event.key === '1' || event.key === 'Numpad1') {
-        this._handleAnswer(0);
-        return;
-      }
-
-      if (event.key === '2' || event.key === 'Numpad2') {
-        this._handleAnswer(1);
-        return;
-      }
-
       return;
     }
 
@@ -842,6 +1277,7 @@ export class EndlessRunnerGame {
       this._movement = 0;
       this._clearTouchMovement();
       this._showPauseMainMenuConfirm = false;
+      this._resetMenuFocus();
       this._cheatCodeBuffer = '';
       this._pauseGameMusic();
       this._canvas.focus();
@@ -854,12 +1290,18 @@ export class EndlessRunnerGame {
   }
 
   private _goToMainMenu(): void {
-    this._savePlayerProgress(true);
+    this._gameOverShowsShop = false;
+    this._savePlayerProgress(true).catch(() => {
+      // Error already logged in _savePlayerProgress.
+    });
     this._state = 'waiting';
     this._movement = 0;
     this._clearTouchMovement();
     this._showPauseMainMenuConfirm = false;
     this._resetCheats();
+    this._powerShieldEndsAt = 0;
+    this._grantPowerShieldOnResume = false;
+    this._resetMenuFocus();
     this._obstacles = [];
     this._coins = [];
     this._shields = [];
@@ -870,10 +1312,181 @@ export class EndlessRunnerGame {
     this._canvas.focus();
   }
 
+  private _applyDebugHeartsOverride(): void {
+    if (DEBUG_FORCE_ZERO_HEARTS) {
+      this._dailyHeartsRemaining = 0;
+    }
+  }
+
+  private _tryStartGame(): void {
+    this._refreshDailyHearts();
+
+    if (this._dailyHeartsRemaining <= 0) {
+      this._openShop();
+      return;
+    }
+
+    this._startGame();
+  }
+
+  private _openShop(): void {
+    this._state = 'shop';
+    this._resetMenuFocus();
+    this._refreshShopCoinBalance();
+    this._canvas.focus();
+  }
+
+  private _closeShop(): void {
+    this._state = 'waiting';
+    this._resetMenuFocus();
+    this._startMenuMusic();
+    this._canvas.focus();
+  }
+
+  private _canPurchaseShopOption(menu: ShopMenuConfig, index: number): boolean {
+    const option = menu.buyOptions[index];
+
+    if (!option) {
+      return false;
+    }
+
+    if (this._totalCoins < option.price) {
+      return false;
+    }
+
+    return this._dailyHeartsRemaining + option.hearts <= MAX_LIVES;
+  }
+
+  private _showShopInsufficientCoinsMessage(): void {
+    this._shopMessage = SHOP_MENU_LAYOUT.insufficientCoinsMessage;
+    this._shopMessageEndsAt =
+      performance.now() + SHOP_MENU_LAYOUT.insufficientCoinsMessageDurationMs;
+  }
+
+  private _clearShopMessageIfExpired(timestamp: number): void {
+    if (this._shopMessage && timestamp >= this._shopMessageEndsAt) {
+      this._shopMessage = undefined;
+    }
+  }
+
+  private _tryShopPurchase(menu: ShopMenuConfig, index: number, onSuccess?: () => void): void {
+    const option = menu.buyOptions[index];
+
+    if (!option || this._shopPurchaseSaving) {
+      return;
+    }
+
+    if (this._totalCoins < option.price) {
+      this._showShopInsufficientCoinsMessage();
+      return;
+    }
+
+    if (this._dailyHeartsRemaining + option.hearts > MAX_LIVES) {
+      return;
+    }
+
+    const nextHearts = Math.min(MAX_LIVES, this._dailyHeartsRemaining + option.hearts);
+    const coinCost = option.price;
+
+    if (DEBUG_FORCE_ZERO_HEARTS) {
+      this._totalCoins = Math.max(0, this._totalCoins - coinCost);
+      this._applyDebugHeartsOverride();
+      return;
+    }
+
+    this._shopPurchaseSaving = true;
+
+    this._progressService
+      ?.saveShopPurchase({
+        heartsRemaining: nextHearts,
+        heartsDay: this._dailyHeartsDay,
+        coinCost
+      })
+      .then((newTotalCoin) => {
+        this._dailyHeartsRemaining = nextHearts;
+        this._totalCoins = newTotalCoin;
+        this._shopPurchaseSaving = false;
+        onSuccess?.();
+      })
+      .catch((error: unknown) => {
+        this._shopPurchaseSaving = false;
+        console.error('[FollowThePath] Failed to save shop purchase.', error);
+
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.indexOf('Insufficient coins') >= 0) {
+          this._showShopInsufficientCoinsMessage();
+        }
+
+        this._progressService
+          ?.loadSession()
+          .then((session) => {
+            this._totalCoins = session.progress.totalCoins;
+          })
+          .catch(() => {
+            // Keep local UI unchanged if refresh fails.
+          });
+      });
+  }
+
+  private _refreshDailyHearts(): void {
+    const previousDay = this._dailyHeartsDay;
+    const hearts = resolveDailyHearts(this._dailyHeartsRemaining, this._dailyHeartsDay);
+    this._dailyHeartsRemaining = hearts.heartsRemaining;
+    this._dailyHeartsDay = hearts.heartsDay;
+    this._applyDebugHeartsOverride();
+
+    if (!DEBUG_FORCE_ZERO_HEARTS && hearts.heartsDay !== previousDay) {
+      this._saveDailyHearts();
+    }
+  }
+
+  private _loseLife(): void {
+    if (!this._isFreePlaySession) {
+      this._sessionHeartsLost += 1;
+    }
+
+    this._dailyHeartsRemaining = Math.max(0, this._dailyHeartsRemaining - 1);
+    this._applyDebugHeartsOverride();
+    this._saveDailyHearts();
+  }
+
+  private _handleOutOfHearts(): void {
+    this._resetMenuFocus();
+    this._gameOverShowsShop = true;
+    this._state = 'gameover';
+    this._stopAllMusic();
+    this._playSfx(this._gameOverSound);
+
+    this._savePlayerProgress(true)
+      .then(() => {
+        this._refreshShopCoinBalance();
+      })
+      .catch(() => {
+        // Error already logged in _savePlayerProgress.
+      });
+  }
+
+  private _refreshShopCoinBalance(): void {
+    if (!this._progressService) {
+      return;
+    }
+
+    this._progressService
+      .refreshSpendableCoins()
+      .then((totalCoin) => {
+        this._totalCoins = totalCoin;
+      })
+      .catch((error: unknown) => {
+        console.error('[FollowThePath] Failed to refresh shop coin balance.', error);
+      });
+  }
+
   private _startGame(): void {
+    this._gameOverShowsShop = false;
     this._isFreePlaySession = this._freeModeUnlocked;
+    this._sessionHeartsLost = 0;
+    this._resetMenuFocus();
     this._score = 0;
-    this._lives = MAX_LIVES;
     this._playerY = this._playableCenterY();
     this._movement = 0;
     this._clearTouchMovement();
@@ -884,6 +1497,7 @@ export class EndlessRunnerGame {
     this._explosionParticles = [];
     this._explosionFlashes = [];
     this._confettiParticles = [];
+    this._screenShakeEndsAt = 0;
     if (this._freeModeUnlocked) {
       this._currentLevel = this._freeModeDifficulty;
       this._allQuestionsComplete = false;
@@ -903,6 +1517,13 @@ export class EndlessRunnerGame {
     this._activeQuestionInLevelIndex = 0;
     this._obstaclePenalty = 0;
     this._ghostModeEndsAt = 0;
+    this._powerShieldEndsAt = 0;
+    this._grantPowerShieldOnResume = false;
+    this._questionTimerMs = 0;
+    this._shieldTimerMs = 0;
+    this._nextShieldSpawnDelayMs = DEBUG_SPAWN_SHIELD_FIRST
+      ? 0
+      : this._randomBetween(SHIELD_SPAWN_MIN_MS, SHIELD_SPAWN_MAX_MS);
     this._sessionXpByLevel = [0, 0, 0];
     this._sessionProgressSaved = false;
     this._sessionProgressSaving = false;
@@ -914,6 +1535,7 @@ export class EndlessRunnerGame {
     this._scheduleSpawns(0);
     this._startGameMusic();
     this._canvas.focus();
+    this._saveAchievementsOnGameStart();
 
     if (DEBUG_SHOW_LEVEL_COMPLETE_AT_START) {
       this._score = 100;
@@ -933,16 +1555,11 @@ export class EndlessRunnerGame {
   private _scheduleSpawns(spawnClockMs: number): void {
     this._nextObstacleAt = spawnClockMs + this._randomBetween(OBSTACLE_SPAWN_MIN_MS, OBSTACLE_SPAWN_MAX_MS);
     this._nextCoinAt = spawnClockMs + this._randomBetween(500, 1200);
-    this._nextShieldAt = DEBUG_SPAWN_SHIELD_FIRST ? spawnClockMs : spawnClockMs + this._getQuestionSpawnIntervalMs();
   }
 
   private _getEffectiveSpeedMultiplier(): number {
     const cheatMultiplier = this._cheatTurbo ? CHEAT_TURBO_MULTIPLIER : 1;
     return this._gameSpeedMultiplier * cheatMultiplier;
-  }
-
-  private _getQuestionSpawnIntervalMs(): number {
-    return SHIELD_SPAWN_INTERVAL_MS * this._gameSpeedMultiplier;
   }
 
   private _increaseGameSpeedAfterQuestion(): void {
@@ -1000,7 +1617,75 @@ export class EndlessRunnerGame {
       this._attractCoins(frameScale);
     }
     this._cleanupEntities();
+    this._updateQuestionTimer(delta);
+    this._updateShieldSpawns(delta);
     this._checkCollisions(timestamp);
+  }
+
+  private _updateQuestionTimer(delta: number): void {
+    if (!this._hasRemainingQuestionsInCurrentLevel()) {
+      return;
+    }
+
+    this._questionTimerMs += delta;
+
+    if (this._questionTimerMs >= QUESTION_INTERVAL_MS) {
+      this._questionTimerMs = 0;
+      this._showQuestion();
+    }
+  }
+
+  private _updateShieldSpawns(delta: number): void {
+    this._shieldTimerMs += delta;
+
+    if (this._shieldTimerMs < this._nextShieldSpawnDelayMs) {
+      return;
+    }
+
+    this._shieldTimerMs = 0;
+    this._nextShieldSpawnDelayMs = this._randomBetween(SHIELD_SPAWN_MIN_MS, SHIELD_SPAWN_MAX_MS);
+
+    if (!this._trySpawnShieldCollectible()) {
+      this._shieldTimerMs = this._nextShieldSpawnDelayMs - SPAWN_RETRY_DELAY_MS;
+    }
+  }
+
+  private _trySpawnShieldCollectible(): boolean {
+    const spawnX = DESIGN_WIDTH + SHIELD_DISPLAY_SIZE;
+    const maxY = this._playableTop() + this._playableHeight() - SHIELD_DISPLAY_SIZE;
+    const spawnY = this._findNonOverlappingY(
+      spawnX,
+      SHIELD_DISPLAY_SIZE,
+      SHIELD_DISPLAY_SIZE,
+      this._playableTop(),
+      maxY
+    );
+
+    if (spawnY === undefined) {
+      return false;
+    }
+
+    this._shields.push({
+      x: spawnX,
+      y: spawnY,
+      width: SHIELD_DISPLAY_SIZE,
+      height: SHIELD_DISPLAY_SIZE,
+      speed: SCROLL_SPEED
+    });
+
+    return true;
+  }
+
+  private _isPowerShieldActive(timestamp: number): boolean {
+    return this._powerShieldEndsAt > timestamp;
+  }
+
+  private _grantPowerShield(timestamp: number, playSound: boolean = true): void {
+    this._powerShieldEndsAt = timestamp + POWER_SHIELD_DURATION_MS;
+
+    if (playSound) {
+      this._playSfx(this._correctSound);
+    }
   }
 
   private _getCollisionCenter(
@@ -1313,31 +1998,6 @@ export class EndlessRunnerGame {
         this._nextCoinAt = gameTimeMs + SPAWN_RETRY_DELAY_MS;
       }
     }
-
-    if (gameTimeMs >= this._nextShieldAt && this._hasRemainingQuestionsInCurrentLevel()) {
-      const spawnX = DESIGN_WIDTH + SHIELD_DISPLAY_SIZE;
-      const maxY = this._playableTop() + this._playableHeight() - SHIELD_DISPLAY_SIZE;
-      const spawnY = this._findNonOverlappingY(
-        spawnX,
-        SHIELD_DISPLAY_SIZE,
-        SHIELD_DISPLAY_SIZE,
-        this._playableTop(),
-        maxY
-      );
-
-      if (spawnY !== undefined) {
-        this._shields.push({
-          x: spawnX,
-          y: spawnY,
-          width: SHIELD_DISPLAY_SIZE,
-          height: SHIELD_DISPLAY_SIZE,
-          speed: SCROLL_SPEED
-        });
-        this._nextShieldAt = gameTimeMs + this._getQuestionSpawnIntervalMs();
-      } else {
-        this._nextShieldAt = gameTimeMs + SPAWN_RETRY_DELAY_MS;
-      }
-    }
   }
 
   private _rectsOverlap(
@@ -1436,7 +2096,7 @@ export class EndlessRunnerGame {
   private _checkCollisions(timestamp: number): void {
     if (DEBUG_AUTO_COLLECT_SHIELDS && this._shields.length > 0) {
       this._shields.splice(0, this._shields.length);
-      this._showQuestion();
+      this._grantPowerShield(timestamp);
       return;
     }
 
@@ -1475,15 +2135,18 @@ export class EndlessRunnerGame {
           return;
         }
 
+        if (this._isPowerShieldActive(timestamp)) {
+          this._powerShieldEndsAt = 0;
+          this._playSfx(this._correctSound);
+          return;
+        }
+
         this._playSfx(this._crushSound);
-        this._lives--;
+        this._loseLife();
         this._activateGhostMode(timestamp);
 
-        if (this._lives <= 0) {
-          this._state = 'gameover';
-          this._savePlayerProgress(true);
-          this._stopAllMusic();
-          this._playSfx(this._gameOverSound);
+        if (this._dailyHeartsRemaining <= 0) {
+          this._handleOutOfHearts();
         }
         return;
       }
@@ -1518,7 +2181,7 @@ export class EndlessRunnerGame {
 
       if (dx * dx + dy * dy < hitRadius * hitRadius) {
         this._shields.splice(k, 1);
-        this._showQuestion();
+        this._grantPowerShield(timestamp);
         return;
       }
     }
@@ -1562,6 +2225,27 @@ export class EndlessRunnerGame {
 
   private _applyWrongAnswerPenalty(): void {
     this._obstaclePenalty += 1;
+    this._loseLife();
+  }
+
+  private _triggerWrongAnswerScreenShake(): void {
+    this._screenShakeEndsAt = performance.now() + WRONG_ANSWER_SCREEN_SHAKE.durationMs;
+  }
+
+  private _getScreenShakeOffset(timestamp: number): { x: number; y: number } {
+    if (timestamp >= this._screenShakeEndsAt) {
+      return { x: 0, y: 0 };
+    }
+
+    const remaining = this._screenShakeEndsAt - timestamp;
+    const intensity =
+      (remaining / WRONG_ANSWER_SCREEN_SHAKE.durationMs) *
+      s(WRONG_ANSWER_SCREEN_SHAKE.amplitude);
+
+    return {
+      x: (Math.random() * 2 - 1) * intensity,
+      y: (Math.random() * 2 - 1) * intensity
+    };
   }
 
   private _pickUnansweredQuestionIndex(): number | undefined {
@@ -1602,11 +2286,19 @@ export class EndlessRunnerGame {
       if (xpEarned > 0) {
         this._sessionXpByLevel[levelIndex] = xpEarned;
       }
+
+      if (this._currentLevel >= MAX_QUESTION_LEVEL && this._sessionHeartsLost === 0) {
+        this._saveAchievements({
+          markFlawlessCampaignComplete: true,
+          coinsCollected: 0
+        });
+      }
     }
 
     this._state = 'levelComplete';
     this._movement = 0;
     this._clearTouchMovement();
+    this._resetMenuFocus();
     this._pauseGameMusic();
     this._canvas.focus();
   }
@@ -1663,7 +2355,9 @@ export class EndlessRunnerGame {
 
     if (this._freeModeUnlocked) {
       this._allQuestionsComplete = true;
-      this._savePlayerProgress(true);
+      this._savePlayerProgress(true).catch(() => {
+        // Error already logged in _savePlayerProgress.
+      });
       this._goToMainMenu();
       return;
     }
@@ -1673,20 +2367,28 @@ export class EndlessRunnerGame {
       if (this._xpEarnedSlots.every((earned) => earned)) {
         this._freeModeUnlocked = true;
       }
-      this._savePlayerProgress(true);
+      this._savePlayerProgress(true).catch(() => {
+        // Error already logged in _savePlayerProgress.
+      });
       this._goToMainMenu();
       return;
     }
 
-    this._savePlayerProgress(false);
+    this._savePlayerProgress(false).catch(() => {
+      // Error already logged in _savePlayerProgress.
+    });
 
     this._currentLevel += 1;
-    this._lives = MAX_LIVES;
     this._answeredInLevel = [false, false, false, false];
     this._levelStartScore = this._score;
     this._obstacles = [];
     this._coins = [];
     this._shields = [];
+    this._powerShieldEndsAt = 0;
+    this._grantPowerShieldOnResume = false;
+    this._questionTimerMs = 0;
+    this._shieldTimerMs = 0;
+    this._nextShieldSpawnDelayMs = this._randomBetween(SHIELD_SPAWN_MIN_MS, SHIELD_SPAWN_MAX_MS);
     this._spawnClockMs = 0;
     this._scheduleSpawns(0);
 
@@ -1721,7 +2423,13 @@ export class EndlessRunnerGame {
       this._spawnConfetti();
     }
 
+    if (this._grantPowerShieldOnResume) {
+      this._grantPowerShieldOnResume = false;
+      this._grantPowerShield(performance.now(), false);
+    }
+
     this._state = 'playing';
+    this._questionTimerMs = 0;
     this._lastTimestamp = 0;
     this._canvas.focus();
   }
@@ -1741,6 +2449,7 @@ export class EndlessRunnerGame {
     this._movement = 0;
     this._clearTouchMovement();
     this._selectedAnswerIndex = 0;
+    this._menuFocusIndex = 0;
     this._answerFeedback = undefined;
     this._clearAnswerFeedbackTimer();
     this._canvas.focus();
@@ -1772,9 +2481,11 @@ export class EndlessRunnerGame {
       this._answeredInLevel[this._activeQuestionInLevelIndex] = true;
       this._awardXpForCorrectAnswer();
       this._obstaclePenalty = 0;
+      this._grantPowerShieldOnResume = true;
       this._playSfx(this._correctSound);
     } else {
       this._applyWrongAnswerPenalty();
+      this._triggerWrongAnswerScreenShake();
       this._playSfx(this._alarmSound);
     }
 
@@ -1783,7 +2494,9 @@ export class EndlessRunnerGame {
       this._answerFeedbackTimerId = undefined;
       this._answerFeedback = undefined;
 
-      if (correct && this._isCurrentLevelComplete()) {
+      if (!correct && this._dailyHeartsRemaining <= 0) {
+        this._handleOutOfHearts();
+      } else if (correct && this._isCurrentLevelComplete()) {
         this._showLevelCompleteScreen();
       } else {
         this._startCountdown();
@@ -1842,10 +2555,7 @@ export class EndlessRunnerGame {
   private _unlockAudio(): void {
     const wasUnlocked = this._audioUnlocked;
     this._audioUnlocked = true;
-    this._menuMusic.muted = false;
-    this._menuMusic.volume = MUSIC_VOLUME;
-    this._gameMusic.muted = false;
-    this._gameMusic.volume = MUSIC_VOLUME;
+    this._applyMusicMuteState();
 
     if (!wasUnlocked) {
       this._removeAudioUnlockListeners();
@@ -1855,12 +2565,17 @@ export class EndlessRunnerGame {
   }
 
   private _resumeMusicForCurrentState(): void {
+    if (this._musicMuted) {
+      return;
+    }
+
     if (this._state === 'waiting') {
       this._ensureMenuMusicPlaying();
       return;
     }
 
     if (this._state === 'playing' && this._gameMusic.paused) {
+      this._applyMusicMuteState();
       this._gameMusic.play().catch(() => {
         // Browsers may block audio until the player interacts.
       });
@@ -1868,13 +2583,12 @@ export class EndlessRunnerGame {
   }
 
   private _ensureMenuMusicPlaying(): void {
-    if (this._state !== 'waiting') {
+    if (this._state !== 'waiting' || this._musicMuted) {
       return;
     }
 
     this._stopGameMusic();
-    this._menuMusic.muted = false;
-    this._menuMusic.volume = MUSIC_VOLUME;
+    this._applyMusicMuteState();
 
     if (!this._menuMusic.paused) {
       return;
@@ -1887,8 +2601,12 @@ export class EndlessRunnerGame {
 
   private _startMenuMusic(): void {
     this._stopGameMusic();
-    this._menuMusic.muted = false;
-    this._menuMusic.volume = MUSIC_VOLUME;
+    this._applyMusicMuteState();
+
+    if (this._musicMuted) {
+      return;
+    }
+
     this._menuMusic.currentTime = 0;
     this._menuMusic.play().catch(() => {
       // Browsers may block audio until the player interacts.
@@ -1902,8 +2620,12 @@ export class EndlessRunnerGame {
 
   private _startGameMusic(): void {
     this._stopMenuMusic();
-    this._gameMusic.muted = false;
-    this._gameMusic.volume = MUSIC_VOLUME;
+    this._applyMusicMuteState();
+
+    if (this._musicMuted) {
+      return;
+    }
+
     this._gameMusic.currentTime = 0;
     this._gameMusic.play().catch(() => {
       // Browsers may block audio until the player interacts.
@@ -1915,13 +2637,40 @@ export class EndlessRunnerGame {
   }
 
   private _resumeGameMusic(): void {
-    if (this._state !== 'playing') {
+    if (this._state !== 'playing' || this._musicMuted) {
       return;
     }
 
+    this._applyMusicMuteState();
     this._gameMusic.play().catch(() => {
       // Browsers may block audio until the player interacts.
     });
+  }
+
+  private _applyMusicMuteState(): void {
+    const shouldMute = this._musicMuted || !this._audioUnlocked;
+    this._menuMusic.muted = shouldMute;
+    this._gameMusic.muted = shouldMute;
+
+    if (!shouldMute) {
+      this._menuMusic.volume = MUSIC_VOLUME;
+      this._gameMusic.volume = MUSIC_VOLUME;
+    }
+  }
+
+  private _toggleMusicMute(): void {
+    this._musicMuted = !this._musicMuted;
+
+    if (this._musicMuted) {
+      this._menuMusic.pause();
+      this._gameMusic.pause();
+    }
+
+    this._applyMusicMuteState();
+
+    if (!this._musicMuted) {
+      this._resumeMusicForCurrentState();
+    }
   }
 
   private _stopGameMusic(): void {
@@ -1935,6 +2684,12 @@ export class EndlessRunnerGame {
   }
 
   private _draw(timestamp: number = 0): void {
+    const shake = this._getScreenShakeOffset(timestamp);
+    this._ctx.save();
+    if (shake.x !== 0 || shake.y !== 0) {
+      this._ctx.translate(shake.x, shake.y);
+    }
+
     const width = DESIGN_WIDTH;
     const height = DESIGN_HEIGHT;
 
@@ -1947,14 +2702,30 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'waiting') {
-      this._canvas.style.cursor = 'pointer';
-      this._drawWelcomeScreen(timestamp);
-    } else if (this._state === 'gameover') {
-      this._canvas.style.cursor = 'pointer';
-      this._drawGameOverScreen();
-    } else {
       this._canvas.style.cursor =
-        this._state === 'paused' || this._state === 'levelComplete' ? 'pointer' : 'default';
+        this._isHomeButtonHovered() ||
+        this._isMuteButtonHovered() ||
+        this._getHoveredMenuButtonIndex() >= 0
+          ? 'pointer'
+          : 'default';
+      this._drawWelcomeScreen(timestamp);
+      this._drawMuteButton(timestamp);
+    } else if (this._state === 'shop') {
+      this._canvas.style.cursor =
+        this._isHomeButtonHovered() ||
+        this._isMuteButtonHovered() ||
+        this._getHoveredMenuButtonIndex() >= 0
+          ? 'pointer'
+          : 'default';
+      this._drawWelcomeScreen(timestamp);
+      this._drawMainShopScreen(timestamp);
+      this._drawHomeButton(timestamp);
+      this._drawMuteButton(timestamp);
+    } else if (this._state === 'gameover') {
+      this._canvas.style.cursor = this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
+      this._drawGameOverScreen(timestamp);
+    } else {
+      this._canvas.style.cursor = 'default';
       this._drawPlayer(timestamp);
       this._drawObstacles();
       this._drawCoins();
@@ -1971,16 +2742,22 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'paused') {
-      this._drawPauseScreen();
+      this._canvas.style.cursor =
+        this._isMuteButtonHovered() || this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
+      this._drawPauseScreen(timestamp);
     } else if (this._state === 'question') {
-      this._drawQuestionScreen();
+      this._canvas.style.cursor = this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
+      this._drawQuestionScreen(timestamp);
     } else if (this._state === 'levelIntro') {
       this._drawLevelIntroScreen();
     } else if (this._state === 'levelComplete') {
-      this._drawLevelCompleteScreen();
+      this._canvas.style.cursor = this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
+      this._drawLevelCompleteScreen(timestamp);
     } else if (this._state === 'countdown') {
       this._drawCountdownOverlay(timestamp);
     }
+
+    this._ctx.restore();
   }
 
   private _getCountdownValue(timestamp: number): number {
@@ -2101,6 +2878,7 @@ export class EndlessRunnerGame {
   private _drawLevelCompleteRewards(centerX: number, y: number): void {
     const coinsEarned = this._getLevelCoinsEarned();
     const xpEarned = this._getLevelXpEarned();
+    const showXpReward = LEVEL_COMPLETE.showXpReward && xpEarned > 0;
     const coinIconSize = s(LEVEL_COMPLETE.coinIconSize);
     const centerY =
       y + s(LEVEL_COMPLETE.rewardsFontSize) * LEVEL_COMPLETE.rewardsBaselineFactor;
@@ -2121,10 +2899,10 @@ export class EndlessRunnerGame {
         s(4) +
         this._ctx.measureText(coinsText).width;
     }
-    if (LEVEL_COMPLETE.showCoinReward && LEVEL_COMPLETE.showXpReward) {
+    if (LEVEL_COMPLETE.showCoinReward && showXpReward) {
       totalWidth += s(LEVEL_COMPLETE.rewardsGapBetweenCoinAndXp);
     }
-    if (LEVEL_COMPLETE.showXpReward) {
+    if (showXpReward) {
       totalWidth += this._ctx.measureText(xpText).width;
     }
 
@@ -2145,11 +2923,11 @@ export class EndlessRunnerGame {
       x += this._ctx.measureText(coinsText).width;
     }
 
-    if (LEVEL_COMPLETE.showCoinReward && LEVEL_COMPLETE.showXpReward) {
+    if (LEVEL_COMPLETE.showCoinReward && showXpReward) {
       x += s(LEVEL_COMPLETE.rewardsGapBetweenCoinAndXp);
     }
 
-    if (LEVEL_COMPLETE.showXpReward) {
+    if (showXpReward) {
       this._ctx.fillText(xpText, x, centerY);
     }
   }
@@ -2177,7 +2955,7 @@ export class EndlessRunnerGame {
     this._ctx.drawImage(this._assets.levelPassRaccoon, x, y, mascotWidth, mascotHeight);
   }
 
-  private _drawLevelCompleteScreen(): void {
+  private _drawLevelCompleteScreen(timestamp: number = 0): void {
     this._drawMenuBackdrop();
 
     const panel = this._getMenuPanelBounds();
@@ -2211,7 +2989,9 @@ export class EndlessRunnerGame {
     this._drawMenuButton(
       this._getLevelCompleteProceedButtonBounds(),
       this._getLevelCompleteProceedButtonText(),
-      LEVEL_COMPLETE.proceedButtonFontSize
+      LEVEL_COMPLETE.proceedButtonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(0)
     );
 
     this._drawLevelCompleteMascot(panel);
@@ -2425,12 +3205,51 @@ export class EndlessRunnerGame {
       this._drawGodModeHoloRing(drawX, drawY);
     }
 
+    if (this._isPowerShieldActive(timestamp)) {
+      this._drawPowerShieldAura(drawX, drawY, timestamp);
+    }
+
     if (SHOW_OBSTACLE_HITBOXES) {
       const hitbox = this._getPlayerHitbox();
       this._ctx.strokeStyle = '#FF0000';
       this._ctx.lineWidth = s(2);
       this._ctx.strokeRect(hitbox.x, hitbox.y, hitbox.width, hitbox.height);
     }
+  }
+
+  private _getPowerShieldPulseOpacity(timestamp: number): number {
+    const { minOpacity, maxOpacity, periodMs } = POWER_SHIELD_BLINK;
+    const midpoint = (minOpacity + maxOpacity) / 2;
+    const amplitude = (maxOpacity - minOpacity) / 2;
+    const phase = (timestamp / periodMs) * Math.PI * 2;
+
+    return midpoint + amplitude * Math.sin(phase);
+  }
+
+  private _drawPowerShieldAura(drawX: number, drawY: number, timestamp: number): void {
+    const size = Math.round(SHIELD_DISPLAY_SIZE * 0.72);
+    const shieldX = drawX + (this._playerWidth - size) / 2;
+    const shieldY = drawY - size * 0.18;
+    const remainingMs = Math.max(0, this._powerShieldEndsAt - timestamp);
+    const isWarning = remainingMs <= POWER_SHIELD_BLINK.warningMs;
+
+    this._ctx.save();
+    this._ctx.globalAlpha = isWarning ? this._getPowerShieldPulseOpacity(timestamp) : 0.92;
+
+    if (this._assets) {
+      this._ctx.drawImage(this._assets.shield, shieldX, shieldY, size, size);
+    } else {
+      this._ctx.fillStyle = '#4FC3F7';
+      this._ctx.beginPath();
+      this._ctx.moveTo(shieldX + size / 2, shieldY);
+      this._ctx.lineTo(shieldX + size, shieldY + size * 0.55);
+      this._ctx.lineTo(shieldX + size / 2, shieldY + size);
+      this._ctx.lineTo(shieldX, shieldY + size * 0.55);
+      this._ctx.closePath();
+      this._ctx.fill();
+    }
+
+    this._ctx.restore();
   }
 
   private _drawObstacles(): void {
@@ -2546,7 +3365,7 @@ export class EndlessRunnerGame {
 
     const heartsStartX = HUD_PADDING + this._ctx.measureText(livesLabel).width + s(10);
     for (let i = 0; i < MAX_LIVES; i++) {
-      this._drawHeart(heartsStartX + i * (HEART_SIZE + s(8)), hudCenterY - HEART_SIZE / 2, i < this._lives);
+      this._drawHeart(heartsStartX + i * (HEART_SIZE + s(8)), hudCenterY - HEART_SIZE / 2, i < this._dailyHeartsRemaining);
     }
 
     this._drawLevelHud(hudCenterY);
@@ -2635,7 +3454,7 @@ export class EndlessRunnerGame {
 
   private _getMobileDownButtonBounds(): { x: number; y: number; width: number; height: number } {
     const size = this._getMobileControlButtonSize();
-    const x = s(MOBILE_CONTROLS.marginX);
+    const x = DESIGN_WIDTH - s(MOBILE_CONTROLS.marginX) - size;
     const y = DESIGN_HEIGHT - s(MOBILE_CONTROLS.marginBottom) - size;
 
     return { x, y, width: size, height: size };
@@ -2756,8 +3575,7 @@ export class EndlessRunnerGame {
     this._ctx.fillRect(centerX + barGap / 2, barsTop, barWidth, barHeight);
   }
 
-  private _drawHeart(x: number, y: number, filled: boolean): void {
-    const size = HEART_SIZE;
+  private _drawHeart(x: number, y: number, filled: boolean, size: number = HEART_SIZE): void {
     const image = filled ? this._assets?.heart : this._assets?.heartLost;
 
     if (image) {
@@ -2795,6 +3613,7 @@ export class EndlessRunnerGame {
 
   private _applyPlayerProgress(record: PlayerProgressRecord): void {
     this._bestScore = record.highScore;
+    this._totalCoins = record.totalCoins;
     this._freeModeUnlocked = record.freeModeUnlocked;
     this._xpEarnedSlots = createEmptyEarnedQuestionSlots();
 
@@ -2811,15 +3630,41 @@ export class EndlessRunnerGame {
     if (DEBUG_FORCE_FREE_MODE) {
       this._freeModeUnlocked = true;
     }
+
+    const hearts = resolveDailyHearts(record.heartsRemaining, record.heartsDay);
+    this._dailyHeartsDay = hearts.heartsDay;
+    this._achievementData = record.achievements || createDefaultGameAchievementData();
+    this._applyDebugHeartsOverride();
   }
 
-  private _savePlayerProgress(endOfSession: boolean): void {
-    if (this._sessionProgressSaving || !this._progressService) {
+  private _saveDailyHearts(): void {
+    if (DEBUG_FORCE_ZERO_HEARTS || this._heartsSaving || !this._progressService) {
       return;
     }
 
+    this._heartsSaving = true;
+
+    this._progressService
+      .saveDailyHearts({
+        heartsRemaining: this._dailyHeartsRemaining,
+        heartsDay: this._dailyHeartsDay
+      })
+      .then(() => {
+        this._heartsSaving = false;
+      })
+      .catch((error: unknown) => {
+        this._heartsSaving = false;
+        console.error('[FollowThePath] Failed to save daily hearts to SharePoint.', error);
+      });
+  }
+
+  private _savePlayerProgress(endOfSession: boolean): Promise<void> {
+    if (this._sessionProgressSaving || !this._progressService) {
+      return Promise.resolve();
+    }
+
     if (endOfSession && this._sessionProgressSaved) {
-      return;
+      return Promise.resolve();
     }
 
     const newHighScore = Math.max(this._bestScore, this._score);
@@ -2833,7 +3678,11 @@ export class EndlessRunnerGame {
 
     this._sessionProgressSaving = true;
 
-    this._progressService
+    const achievementUpdate = {
+      coinsCollected: coinDelta
+    };
+
+    return this._progressService
       .saveAfterGame({
         coinsCollected: coinDelta,
         highScore: newHighScore,
@@ -2841,12 +3690,19 @@ export class EndlessRunnerGame {
         xpGainedInLevel: this._getLevelXpEarned(),
         xpGainedThisSession,
         earnedQuestionSlots: [...this._xpEarnedSlots],
-        freeModeUnlocked: this._freeModeUnlocked
+        freeModeUnlocked: this._freeModeUnlocked,
+        heartsRemaining: this._dailyHeartsRemaining,
+        heartsDay: this._dailyHeartsDay,
+        achievementUpdate
       })
       .then(() => {
         this._coinsPersistedScore = this._score;
+        this._totalCoins += coinDelta;
         this._xpEarnedSlotsAtLastSave = this._copyEarnedQuestionSlots(this._xpEarnedSlots);
         this._xpEarnedSlotsXpBaseline = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
+        if (coinDelta > 0) {
+          this._achievementData = applyAchievementSessionUpdate(this._achievementData, achievementUpdate);
+        }
         this._sessionProgressSaving = false;
 
         if (endOfSession) {
@@ -2857,6 +3713,37 @@ export class EndlessRunnerGame {
       .catch((error: unknown) => {
         this._sessionProgressSaving = false;
         console.error('[FollowThePath] Failed to save player progress to SharePoint.', error);
+      });
+  }
+
+  private _saveAchievementsOnGameStart(): void {
+    this._saveAchievements({
+      markFirstPlay: !this._achievementData.firstTimePlay,
+      incrementPlayCount: true,
+      markReplayAfterCompleted: this._freeModeUnlocked,
+      coinsCollected: 0
+    });
+  }
+
+  private _saveAchievements(update: {
+    markFirstPlay?: boolean;
+    incrementPlayCount?: boolean;
+    markReplayAfterCompleted?: boolean;
+    markFlawlessCampaignComplete?: boolean;
+    coinsCollected: number;
+  }): void {
+    if (!this._progressService) {
+      this._achievementData = applyAchievementSessionUpdate(this._achievementData, update);
+      return;
+    }
+
+    this._progressService
+      .saveAchievements(update)
+      .then(() => {
+        this._achievementData = applyAchievementSessionUpdate(this._achievementData, update);
+      })
+      .catch((error: unknown) => {
+        console.error('[FollowThePath] Failed to save achievement progress.', error);
       });
   }
 
@@ -3115,24 +4002,33 @@ export class EndlessRunnerGame {
   private _drawWelcomeDifficultyButton(
     bounds: { x: number; y: number; width: number; height: number },
     label: string,
-    selected: boolean
+    selected: boolean,
+    timestamp: number,
+    interaction: { focused: boolean; hovered: boolean; highlighted: boolean }
   ): void {
-    if (selected) {
-      this._ctx.fillStyle = WELCOME_ACCENT;
-      this._ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-    } else {
-      this._ctx.fillStyle = 'rgba(18, 22, 30, 0.95)';
-      this._ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-      this._ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
-      this._ctx.lineWidth = s(1);
-      this._ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
-    }
+    this._drawWithButtonHoverTransform(bounds, timestamp, interaction.highlighted, (drawBounds) => {
+      if (selected) {
+        this._ctx.fillStyle = WELCOME_ACCENT;
+        this._ctx.fillRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
+      } else {
+        this._ctx.fillStyle = 'rgba(18, 22, 30, 0.95)';
+        this._ctx.fillRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
+        this._ctx.strokeStyle = interaction.highlighted ? WELCOME_ACCENT : 'rgba(255, 255, 255, 0.55)';
+        this._ctx.lineWidth = s(interaction.highlighted ? 2 : 1);
+        this._ctx.strokeRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
+      }
 
-    this._ctx.font = menuFont(WELCOME_MENU.freeMode.difficulty.buttonFontSize);
-    this._ctx.fillStyle = '#FFFFFF';
-    this._ctx.textAlign = 'center';
-    this._ctx.textBaseline = 'middle';
-    this._ctx.fillText(label, bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      if (interaction.focused && !selected) {
+        this._ctx.fillStyle = `rgba(245, 124, 0, ${MENU_BUTTON_HOVER.focusOverlayAlpha})`;
+        this._ctx.fillRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
+      }
+
+      this._ctx.font = menuFont(WELCOME_MENU.freeMode.difficulty.buttonFontSize);
+      this._ctx.fillStyle = '#FFFFFF';
+      this._ctx.textAlign = 'center';
+      this._ctx.textBaseline = 'middle';
+      this._ctx.fillText(label, drawBounds.x + drawBounds.width / 2, drawBounds.y + drawBounds.height / 2);
+    });
   }
 
   private _getGameOverButtonBounds(index: number): { x: number; y: number; width: number; height: number } {
@@ -3243,21 +4139,28 @@ export class EndlessRunnerGame {
     bounds: { x: number; y: number; width: number; height: number },
     label: string,
     fontSize: number,
-    selected: boolean = false
+    timestamp: number = 0,
+    interaction: { focused: boolean; hovered: boolean; highlighted: boolean } = {
+      focused: false,
+      hovered: false,
+      highlighted: false
+    }
   ): void {
-    this._drawStyledButton(bounds, selected);
-
-    this._ctx.font = menuFont(fontSize);
-    this._ctx.fillStyle = '#FFFFFF';
-    this._ctx.textAlign = 'center';
-    this._ctx.textBaseline = 'middle';
-    this._ctx.fillText(label, bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    this._drawWithButtonHoverTransform(bounds, timestamp, interaction.highlighted, (drawBounds) => {
+      this._drawStyledButton(drawBounds, interaction.focused, undefined, interaction.hovered);
+      this._ctx.font = menuFont(fontSize);
+      this._ctx.fillStyle = '#FFFFFF';
+      this._ctx.textAlign = 'center';
+      this._ctx.textBaseline = 'middle';
+      this._ctx.fillText(label, drawBounds.x + drawBounds.width / 2, drawBounds.y + drawBounds.height / 2);
+    });
   }
 
   private _drawStyledButton(
     bounds: { x: number; y: number; width: number; height: number },
     selected: boolean = false,
-    feedback?: 'correct' | 'wrong'
+    feedback?: 'correct' | 'wrong',
+    hovered: boolean = false
   ): void {
     if (this._assets?.buttonBackground) {
       this._drawNineSliceButtonBg(this._assets.buttonBackground, bounds.x, bounds.y, bounds.width, bounds.height);
@@ -3278,7 +4181,10 @@ export class EndlessRunnerGame {
       this._ctx.fillStyle = ANSWER_WRONG_TINT;
       this._ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
     } else if (selected) {
-      this._ctx.fillStyle = 'rgba(245, 124, 0, 0.22)';
+      this._ctx.fillStyle = `rgba(245, 124, 0, ${MENU_BUTTON_HOVER.focusOverlayAlpha})`;
+      this._ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    } else if (hovered) {
+      this._ctx.fillStyle = `rgba(245, 124, 0, ${MENU_BUTTON_HOVER.hoverOverlayAlpha})`;
       this._ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
     }
   }
@@ -3550,6 +4456,380 @@ export class EndlessRunnerGame {
     };
   }
 
+  private _getHomeButtonBounds(): { x: number; y: number; width: number; height: number } {
+    const x = s(HOME_BUTTON.marginX);
+    const y = s(HOME_BUTTON.marginY);
+    const iconSize = s(HOME_BUTTON.iconSize);
+    const gap = s(HOME_BUTTON.gap);
+    const pad = s(HOME_BUTTON.hitPadding);
+
+    this._ctx.font = menuFont(HOME_BUTTON.fontSize);
+    const textWidth = this._ctx.measureText(HOME_BUTTON.label).width;
+    const height = Math.max(iconSize, s(HOME_BUTTON.fontSize) * 1.2);
+
+    return {
+      x: x - pad,
+      y: y - pad,
+      width: iconSize + gap + textWidth + pad * 2,
+      height: height + pad * 2
+    };
+  }
+
+  private _isHomeButtonHovered(): boolean {
+    if (
+      (this._state !== 'waiting' && this._state !== 'shop') ||
+      this._pointerCanvasX === undefined ||
+      this._pointerCanvasY === undefined
+    ) {
+      return false;
+    }
+
+    return this._isPointInRect(this._pointerCanvasX, this._pointerCanvasY, this._getHomeButtonBounds());
+  }
+
+  private _getWelcomeMuteButtonBounds(): { x: number; y: number; width: number; height: number } {
+    const iconSize = s(MUTE_BUTTON.iconSize);
+    const pad = s(MUTE_BUTTON.hitPadding);
+    const x = DESIGN_WIDTH - s(MUTE_BUTTON.marginX) - iconSize;
+
+    return {
+      x: x - pad,
+      y: s(MUTE_BUTTON.marginY) - pad,
+      width: iconSize + pad * 2,
+      height: iconSize + pad * 2
+    };
+  }
+
+  private _getPauseMuteButtonBounds(): { x: number; y: number; width: number; height: number } {
+    const panel = this._getMenuPanelBounds();
+    const iconSize = s(PAUSE_MENU.muteButtonSize);
+    const pad = s(PAUSE_MENU.muteButtonHitPadding);
+    const x = panel.x + panel.width - s(PAUSE_MENU.muteButtonInsetX) - iconSize;
+    const y = panel.y + s(PAUSE_MENU.muteButtonInsetY);
+
+    return {
+      x: x - pad,
+      y: y - pad,
+      width: iconSize + pad * 2,
+      height: iconSize + pad * 2
+    };
+  }
+
+  private _getMuteButtonBounds(): { x: number; y: number; width: number; height: number } {
+    if (this._state === 'paused') {
+      return this._getPauseMuteButtonBounds();
+    }
+
+    return this._getWelcomeMuteButtonBounds();
+  }
+
+  private _isMuteButtonVisible(): boolean {
+    return this._state === 'waiting' || this._state === 'shop' || this._state === 'paused';
+  }
+
+  private _isMuteButtonHovered(): boolean {
+    if (
+      !this._isMuteButtonVisible() ||
+      this._pointerCanvasX === undefined ||
+      this._pointerCanvasY === undefined
+    ) {
+      return false;
+    }
+
+    return this._isPointInRect(this._pointerCanvasX, this._pointerCanvasY, this._getMuteButtonBounds());
+  }
+
+  private _drawMuteButton(timestamp: number): void {
+    const bounds = this._getMuteButtonBounds();
+    const hovered = this._isMuteButtonHovered();
+    const pad =
+      this._state === 'paused' ? s(PAUSE_MENU.muteButtonHitPadding) : s(MUTE_BUTTON.hitPadding);
+    const iconSize =
+      this._state === 'paused' ? s(PAUSE_MENU.muteButtonSize) : s(MUTE_BUTTON.iconSize);
+    const image = this._musicMuted ? this._assets?.muteButton : this._assets?.soundButton;
+
+    this._drawWithButtonHoverTransform(bounds, timestamp, hovered, (drawBounds) => {
+      const iconX = drawBounds.x + pad;
+      const iconY = drawBounds.y + pad;
+
+      if (image) {
+        this._ctx.drawImage(image, iconX, iconY, iconSize, iconSize);
+      }
+    });
+  }
+
+  private _getGameOverMenuButtonCount(): number {
+    if (!this._gameOverShowsShop) {
+      return 2;
+    }
+
+    return GAME_OVER_SHOP_MENU.buyOptions.length + 1;
+  }
+
+  private _getGameOverMenuButtonBounds(
+    index: number
+  ): { x: number; y: number; width: number; height: number } | undefined {
+    if (!this._gameOverShowsShop) {
+      return index === 0 || index === 1 ? this._getGameOverButtonBounds(index) : undefined;
+    }
+
+    const buyCount = GAME_OVER_SHOP_MENU.buyOptions.length;
+    if (index < buyCount) {
+      return this._getShopPriceButtonBounds(GAME_OVER_SHOP_MENU, index);
+    }
+
+    if (index === buyCount) {
+      return this._getShopFooterButtonBounds(GAME_OVER_SHOP_MENU);
+    }
+
+    return undefined;
+  }
+
+  private _getShopRowTopY(menu: ShopMenuConfig, index: number): number {
+    const panel = this._getMenuPanelBounds();
+    const content = this._getMenuContentBounds(panel);
+
+    return (
+      content.y +
+      menu.rowsStartOffsetY +
+      index * (menu.rowHeight + menu.rowGap)
+    );
+  }
+
+  private _getShopPriceButtonBounds(
+    menu: ShopMenuConfig,
+    index: number
+  ): { x: number; y: number; width: number; height: number } {
+    const panel = this._getMenuPanelBounds();
+    const centerX = panel.x + panel.width / 2;
+    const rowTop = this._getShopRowTopY(menu, index);
+    const rowWidth = s(menu.rowWidth);
+    const buttonWidth = s(menu.priceButtonWidth);
+    const buttonHeight = s(menu.priceButtonHeight);
+
+    return {
+      x: centerX + rowWidth / 2 - buttonWidth,
+      y: rowTop + (s(menu.rowHeight) - buttonHeight) / 2,
+      width: buttonWidth,
+      height: buttonHeight
+    };
+  }
+
+  private _getShopFooterButtonBounds(menu: ShopMenuConfig): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } {
+    const panel = this._getMenuPanelBounds();
+    const centerX = panel.x + panel.width / 2;
+
+    return {
+      x: centerX - menu.footerButtonWidth / 2,
+      y: panel.y + panel.height - menu.footerButtonBottomOffset - menu.footerButtonHeight,
+      width: menu.footerButtonWidth,
+      height: menu.footerButtonHeight
+    };
+  }
+
+  private _drawShopContent(menu: ShopMenuConfig, timestamp: number): void {
+    const panel = this._getMenuPanelBounds();
+    const content = this._getMenuContentBounds(panel);
+    const centerX = panel.x + panel.width / 2;
+
+    this._ctx.fillStyle = '#FFFFFF';
+    this._ctx.textAlign = 'center';
+    this._ctx.textBaseline = 'top';
+    this._ctx.font = menuFont(menu.titleFontSize);
+    this._ctx.fillText(menu.titleText, centerX, content.y + menu.titleOffsetY);
+
+    this._ctx.font = menuFont(menu.subtitleFontSize);
+    this._ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    this._ctx.fillText(menu.subtitleText, centerX, content.y + menu.subtitleOffsetY);
+
+    this._clearShopMessageIfExpired(timestamp);
+    if (this._shopMessage) {
+      this._ctx.font = menuFont(SHOP_MENU_LAYOUT.insufficientCoinsMessageFontSize);
+      this._ctx.fillStyle = SHOP_MENU_LAYOUT.insufficientCoinsMessageColor;
+      this._ctx.fillText(
+        this._shopMessage,
+        centerX,
+        content.y + SHOP_MENU_LAYOUT.insufficientCoinsMessageOffsetY
+      );
+    }
+
+    for (let i = 0; i < menu.buyOptions.length; i++) {
+      this._drawShopRow(menu, i, timestamp, i);
+    }
+
+    this._drawMenuButton(
+      this._getShopFooterButtonBounds(menu),
+      menu.footerButtonText,
+      menu.footerButtonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(menu.buyOptions.length)
+    );
+
+    this._drawMenuPanelCoinBalance(panel);
+  }
+
+  private _drawMenuPanelCoinBalance(panel: { x: number; y: number; width: number; height: number }): void {
+    const iconSize = s(SHOP_MENU_LAYOUT.coinBalanceIconSize);
+    const marginX = s(SHOP_MENU_LAYOUT.coinBalanceMarginX);
+    const marginY = s(SHOP_MENU_LAYOUT.coinBalanceMarginY);
+    const gap = s(SHOP_MENU_LAYOUT.coinBalanceGap);
+    const coinText = String(this._totalCoins);
+
+    this._ctx.font = menuFont(SHOP_MENU_LAYOUT.coinBalanceFontSize);
+    const textWidth = this._ctx.measureText(coinText).width;
+    const rightX = panel.x + panel.width - marginX;
+    const topY = panel.y + marginY;
+    const centerY = topY + iconSize / 2;
+    const textX = rightX - textWidth;
+    const iconX = textX - gap - iconSize;
+
+    if (!this._drawUiCoinIcon(iconX, topY, iconSize)) {
+      this._ctx.fillStyle = '#FFEB3B';
+      this._ctx.beginPath();
+      this._ctx.arc(iconX + iconSize / 2, centerY, iconSize / 2, 0, Math.PI * 2);
+      this._ctx.fill();
+    }
+
+    this._ctx.fillStyle = SHOP_MENU_LAYOUT.coinBalanceColor;
+    this._ctx.textAlign = 'left';
+    this._ctx.textBaseline = 'middle';
+    this._ctx.fillText(coinText, textX, centerY);
+  }
+
+  private _drawMainShopScreen(timestamp: number): void {
+    this._drawMenuBackdrop();
+
+    const panel = this._getMenuPanelBounds();
+    this._drawMenuPanelBackground(panel);
+    this._drawShopContent(MAIN_SHOP_MENU, timestamp);
+  }
+
+  private _drawShopRow(
+    menu: ShopMenuConfig,
+    index: number,
+    timestamp: number,
+    interactionIndex: number
+  ): void {
+    const option = menu.buyOptions[index];
+    const panel = this._getMenuPanelBounds();
+    const centerX = panel.x + panel.width / 2;
+    const rowTop = this._getShopRowTopY(menu, index);
+    const rowWidth = s(menu.rowWidth);
+    const rowLeft = centerX - rowWidth / 2;
+    const rowCenterY = rowTop + s(menu.rowHeight) / 2;
+    const heartSize = s(menu.heartIconSize);
+    const heartX = rowLeft;
+    const heartY = rowCenterY - heartSize / 2;
+
+    this._drawHeart(heartX, heartY, true, heartSize);
+
+    this._ctx.font = menuFont(menu.quantityFontSize);
+    this._ctx.fillStyle = '#FFFFFF';
+    this._ctx.textAlign = 'left';
+    this._ctx.textBaseline = 'middle';
+    this._ctx.fillText(
+      menu.quantityPrefix + option.hearts,
+      heartX + heartSize + s(menu.heartToQuantityGap),
+      rowCenterY
+    );
+
+    this._drawShopPriceButton(
+      menu,
+      this._getShopPriceButtonBounds(menu, index),
+      option.price,
+      timestamp,
+      this._getMenuButtonInteraction(interactionIndex),
+      this._canPurchaseShopOption(menu, index)
+    );
+  }
+
+  private _drawShopPriceButton(
+    menu: ShopMenuConfig,
+    bounds: { x: number; y: number; width: number; height: number },
+    price: number,
+    timestamp: number,
+    interaction: { focused: boolean; hovered: boolean; highlighted: boolean },
+    enabled: boolean
+  ): void {
+    this._drawWithButtonHoverTransform(bounds, timestamp, interaction.highlighted && enabled, (drawBounds) => {
+      this._ctx.save();
+      this._ctx.globalAlpha = enabled ? 1 : menu.priceButtonDisabledAlpha;
+
+      if (this._assets?.storeBackground) {
+        this._ctx.drawImage(
+          this._assets.storeBackground,
+          drawBounds.x,
+          drawBounds.y,
+          drawBounds.width,
+          drawBounds.height
+        );
+      } else {
+        this._ctx.fillStyle = menu.priceButtonColor;
+        this._ctx.fillRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
+      }
+
+      if (interaction.highlighted && enabled) {
+        this._ctx.fillStyle = `rgba(255, 255, 255, ${MENU_BUTTON_HOVER.hoverOverlayAlpha})`;
+        this._ctx.fillRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
+      }
+
+      const coinSize = s(menu.priceCoinIconSize);
+      const priceText = String(price);
+      this._ctx.font = menuFont(menu.priceFontSize);
+      const textWidth = this._ctx.measureText(priceText).width;
+      const gap = s(menu.priceCoinGap);
+      const contentWidth = coinSize + gap + textWidth;
+      let contentX = drawBounds.x + (drawBounds.width - contentWidth) / 2;
+      const centerY = drawBounds.y + drawBounds.height / 2;
+
+      if (!this._drawUiCoinIcon(contentX, centerY - coinSize / 2, coinSize)) {
+        this._ctx.fillStyle = '#FFEB3B';
+        this._ctx.beginPath();
+        this._ctx.arc(contentX + coinSize / 2, centerY, coinSize / 2, 0, Math.PI * 2);
+        this._ctx.fill();
+      }
+
+      contentX += coinSize + gap;
+      this._ctx.fillStyle = '#FFFFFF';
+      this._ctx.textAlign = 'left';
+      this._ctx.textBaseline = 'middle';
+      this._ctx.fillText(priceText, contentX, centerY);
+      this._ctx.restore();
+    });
+  }
+
+  private _drawHomeButton(timestamp: number): void {
+    const bounds = this._getHomeButtonBounds();
+    const hovered = this._isHomeButtonHovered();
+    const pad = s(HOME_BUTTON.hitPadding);
+    const iconSize = s(HOME_BUTTON.iconSize);
+    const gap = s(HOME_BUTTON.gap);
+
+    this._drawWithButtonHoverTransform(bounds, timestamp, hovered, (drawBounds) => {
+      const iconX = drawBounds.x + pad;
+      const iconY = drawBounds.y + (drawBounds.height - iconSize) / 2;
+
+      if (this._assets?.backButton) {
+        this._ctx.drawImage(this._assets.backButton, iconX, iconY, iconSize, iconSize);
+      }
+
+      this._ctx.font = menuFont(HOME_BUTTON.fontSize);
+      this._ctx.fillStyle = '#FFFFFF';
+      this._ctx.textAlign = 'left';
+      this._ctx.textBaseline = 'middle';
+      this._ctx.fillText(
+        HOME_BUTTON.label,
+        iconX + iconSize + gap,
+        drawBounds.y + drawBounds.height / 2
+      );
+    });
+  }
+
   private _drawWelcomeMascot(timestamp: number): void {
     const shipHeight = s(WELCOME_MENU.mascotShipHeight);
     const shipWidth = Math.round(shipHeight * (CHARACTER_SPRITE_NATIVE.width / CHARACTER_SPRITE_NATIVE.height));
@@ -3604,7 +4884,9 @@ export class EndlessRunnerGame {
         this._drawWelcomeDifficultyButton(
           this._getWelcomeDifficultyButtonBounds(i),
           difficulty.labels[i],
-          this._freeModeDifficulty === i + 1
+          this._freeModeDifficulty === i + 1,
+          timestamp,
+          this._getMenuButtonInteraction(i)
         );
       }
     }
@@ -3614,11 +4896,23 @@ export class EndlessRunnerGame {
     this._ctx.textAlign = 'center';
     this._ctx.fillText('Best score: ' + this._bestScore, layout.centerX, layout.bestScoreY);
 
+    const startButtonIndex = this._freeModeUnlocked ? WELCOME_MENU.freeMode.difficulty.labels.length : 0;
     const button = this._getStartButtonBounds();
-    this._drawMenuButton(button, 'START GAME', WELCOME_MENU.startButtonFontSize);
+    this._drawMenuButton(
+      button,
+      'START GAME',
+      WELCOME_MENU.startButtonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(startButtonIndex)
+    );
 
-    this._drawArrowKeyHints(layout.centerX, content.bottom - menuLayout.arrowHintsBottomOffset);
+    this._drawArrowKeyHints(layout.centerX, content.bottom - menuLayout.arrowHintsBottomOffset, {
+      instructionText: 'Use arrow keys to navigate · Enter to select'
+    });
     this._drawWelcomeMascot(timestamp);
+    if (this._state !== 'shop') {
+      this._drawHomeButton(timestamp);
+    }
   }
 
   private _drawGameOverMascot(): void {
@@ -3632,14 +4926,19 @@ export class EndlessRunnerGame {
     }
   }
 
-  private _drawGameOverScreen(): void {
+  private _drawGameOverScreen(timestamp: number = 0): void {
     this._drawMenuBackdrop();
 
     const panel = this._getMenuPanelBounds();
+    this._drawMenuPanelBackground(panel);
+
+    if (this._gameOverShowsShop) {
+      this._drawShopContent(GAME_OVER_SHOP_MENU, timestamp);
+      return;
+    }
+
     const content = this._getMenuContentBounds(panel);
     const centerX = panel.x + panel.width / 2;
-
-    this._drawMenuPanelBackground(panel);
 
     this._ctx.fillStyle = '#FFFFFF';
     this._ctx.textAlign = 'center';
@@ -3648,12 +4947,9 @@ export class EndlessRunnerGame {
     const titleY = content.y + GAME_OVER_MENU.titleOffsetY;
     this._ctx.fillText('GAME OVER', centerX, titleY);
 
-    this._drawMenuButton(this._getGameOverButtonBounds(0), 'TRY AGAIN', GAME_OVER_MENU.buttonFontSize);
-    this._drawMenuButton(this._getGameOverButtonBounds(1), 'MAIN MENU', GAME_OVER_MENU.buttonFontSize);
-
-    const buttonTop = this._getGameOverButtonBounds(0).y;
+    const scoreAnchorY = this._getGameOverButtonBounds(0).y;
     const bestScoreY =
-      buttonTop -
+      scoreAnchorY -
       GAME_OVER_MENU.scoreAboveButtonsOffset -
       GAME_OVER_MENU.bestScoreFontSize;
     const scoreY =
@@ -3667,6 +4963,22 @@ export class EndlessRunnerGame {
     this._ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
     this._ctx.fillText('Best score: ' + this._bestScore, centerX, bestScoreY);
 
+    this._drawMenuButton(
+      this._getGameOverButtonBounds(0),
+      'TRY AGAIN',
+      GAME_OVER_MENU.buttonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(0)
+    );
+    this._drawMenuButton(
+      this._getGameOverButtonBounds(1),
+      'MAIN MENU',
+      GAME_OVER_MENU.buttonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(1)
+    );
+
+    this._drawMenuPanelCoinBalance(panel);
     this._drawGameOverMascot();
   }
 
@@ -3711,7 +5023,7 @@ export class EndlessRunnerGame {
     return y + badgeHeight;
   }
 
-  private _drawPauseScreen(): void {
+  private _drawPauseScreen(timestamp: number = 0): void {
     this._drawMenuBackdrop();
 
     const panel = this._getMenuPanelBounds();
@@ -3733,15 +5045,29 @@ export class EndlessRunnerGame {
       this._ctx.fillText(PAUSE_MENU.subtitleText, layout.centerX, layout.subtitleY);
     }
 
-    this._drawMenuButton(layout.resumeButton, PAUSE_MENU.resumeButtonText, PAUSE_MENU.buttonFontSize);
+    this._drawMenuButton(
+      layout.resumeButton,
+      PAUSE_MENU.resumeButtonText,
+      PAUSE_MENU.buttonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(0)
+    );
 
     if (PAUSE_MENU.showMainMenuButton) {
-      this._drawMenuButton(layout.mainMenuButton, PAUSE_MENU.mainMenuButtonText, PAUSE_MENU.buttonFontSize);
+      this._drawMenuButton(
+        layout.mainMenuButton,
+        PAUSE_MENU.mainMenuButtonText,
+        PAUSE_MENU.buttonFontSize,
+        timestamp,
+        this._getMenuButtonInteraction(1)
+      );
     }
 
     if (this._showPauseMainMenuConfirm) {
-      this._drawPauseConfirmDialog();
+      this._drawPauseConfirmDialog(timestamp);
     }
+
+    this._drawMuteButton(timestamp);
   }
 
   private _getPauseConfirmPanelBounds(): { x: number; y: number; width: number; height: number } {
@@ -3767,7 +5093,7 @@ export class EndlessRunnerGame {
     };
   }
 
-  private _drawPauseConfirmDialog(): void {
+  private _drawPauseConfirmDialog(timestamp: number = 0): void {
     this._ctx.fillStyle = PAUSE_CONFIRM.overlayColor;
     this._ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
 
@@ -3781,8 +5107,20 @@ export class EndlessRunnerGame {
     this._ctx.font = menuFont(PAUSE_CONFIRM.messageFontSize);
     this._ctx.fillText('RETURN TO MAIN MENU?', centerX, panel.y + PAUSE_CONFIRM.messageOffsetY);
 
-    this._drawMenuButton(this._getPauseConfirmButtonBounds(0), 'NO', PAUSE_CONFIRM.buttonFontSize);
-    this._drawMenuButton(this._getPauseConfirmButtonBounds(1), 'YES', PAUSE_CONFIRM.buttonFontSize);
+    this._drawMenuButton(
+      this._getPauseConfirmButtonBounds(0),
+      'NO',
+      PAUSE_CONFIRM.buttonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(0)
+    );
+    this._drawMenuButton(
+      this._getPauseConfirmButtonBounds(1),
+      'YES',
+      PAUSE_CONFIRM.buttonFontSize,
+      timestamp,
+      this._getMenuButtonInteraction(1)
+    );
   }
 
   private _drawPowerShieldBadge(centerX: number, y: number): number {
@@ -3832,21 +5170,24 @@ export class EndlessRunnerGame {
   private _drawAnswerButton(
     bounds: { x: number; y: number; width: number; height: number },
     label: string,
-    selected: boolean,
+    interaction: { focused: boolean; hovered: boolean; highlighted: boolean },
+    timestamp: number,
     feedback?: 'correct' | 'wrong'
   ): void {
-    this._drawStyledButton(bounds, selected, feedback);
-    this._drawWrappedTextInRect(
-      label,
-      bounds,
-      menuFont(QUESTION_POPUP.answerButtonFontSize),
-      '#FFFFFF',
-      QUESTION_POPUP.answerButtonLineHeight,
-      QUESTION_POPUP.answerButtonPaddingX
-    );
+    this._drawWithButtonHoverTransform(bounds, timestamp, interaction.highlighted && !feedback, (drawBounds) => {
+      this._drawStyledButton(drawBounds, interaction.focused, feedback, interaction.hovered);
+      this._drawWrappedTextInRect(
+        label,
+        drawBounds,
+        menuFont(QUESTION_POPUP.answerButtonFontSize),
+        '#FFFFFF',
+        QUESTION_POPUP.answerButtonLineHeight,
+        QUESTION_POPUP.answerButtonPaddingX
+      );
+    });
   }
 
-  private _drawQuestionScreen(): void {
+  private _drawQuestionScreen(timestamp: number = 0): void {
     const panel = this._getQuestionPanelBounds();
     const content = this._getMenuContentBounds(panel);
     const centerX = panel.x + panel.width / 2;
@@ -3898,7 +5239,8 @@ export class EndlessRunnerGame {
       this._drawAnswerButton(
         this._getAnswerButtonBounds(i),
         question.options[i],
-        i === this._selectedAnswerIndex,
+        this._getMenuButtonInteraction(i),
+        timestamp,
         feedback
       );
     }

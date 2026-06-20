@@ -6,7 +6,8 @@ export type GameState =
   | 'question'
   | 'countdown'
   | 'levelComplete'
-  | 'gameover';
+  | 'gameover'
+  | 'shop';
 
 export interface Question {
   level: number;
@@ -93,7 +94,11 @@ export interface LoadedAssets {
   star: HTMLImageElement;
   heart: HTMLImageElement;
   heartLost: HTMLImageElement;
+  storeBackground: HTMLImageElement;
   levelPassRaccoon: HTMLImageElement;
+  backButton: HTMLImageElement;
+  muteButton: HTMLImageElement;
+  soundButton: HTMLImageElement;
   obstacles: HTMLImageElement[];
   obstacleMeta: SpriteMeta[];
   characterMeta: SpriteMeta;
@@ -104,7 +109,11 @@ export interface LoadedAssets {
   pauseButtonMeta: SpriteMeta;
   arrowUpMeta: SpriteMeta;
   starMeta: SpriteMeta;
+  storeBackgroundMeta: SpriteMeta;
   levelPassRaccoonMeta: SpriteMeta;
+  backButtonMeta: SpriteMeta;
+  muteButtonMeta: SpriteMeta;
+  soundButtonMeta: SpriteMeta;
   speechBubbleMeta: SpriteMeta;
 }
 
@@ -199,6 +208,114 @@ export function getWelcomeMenuLayout(freeModeUnlocked: boolean): typeof WELCOME_
 }
 
 // =============================================================================
+// HOME BUTTON — top-left back link on the welcome screen
+// =============================================================================
+export const HOME_BUTTON = {
+  marginX: 15,
+  marginY: 15,
+  iconSize: 30,
+  fontSize: 18,
+  gap: 10,
+  hitPadding: 5,
+  label: 'HOME'
+};
+
+export const BACK_BTN_NATIVE = { width: 160, height: 160 };
+
+// =============================================================================
+// MUTE BUTTON — top-right music toggle (welcome + pause screens)
+// =============================================================================
+export const MUTE_BUTTON = {
+  marginX: 15,
+  marginY: 15,
+  iconSize: 30,
+  hitPadding: 8
+};
+
+// =============================================================================
+// DAILY HEARTS — persisted per player, reset each calendar day
+// =============================================================================
+export const DAILY_HEARTS = {
+  /** IANA timezone used to determine when a new day starts. */
+  timeZone: 'Asia/Singapore'
+};
+
+// =============================================================================
+// SHARED SHOP LAYOUT — used by main-menu shop and game-over shop
+// =============================================================================
+export const SHOP_BUY_OPTIONS = [
+  { hearts: 1, price: 10 },
+  { hearts: 2, price: 20 },
+  { hearts: 3, price: 30 }
+] as const;
+
+export const SHOP_MENU_LAYOUT = {
+  titleFontSize: 30,
+  titleOffsetY: 0,
+  subtitleFontSize: 14,
+  subtitleOffsetY: 80,
+  buyOptions: SHOP_BUY_OPTIONS,
+  rowWidth: 200,
+  rowHeight: 56,
+  rowGap: 40,
+  rowsStartOffsetY: 150,
+  heartIconSize: 20,
+  heartToQuantityGap: 18,
+  quantityFontSize: 18,
+  quantityPrefix: 'X ',
+  priceButtonWidth: 60,
+  priceButtonHeight: 30,
+  priceFontSize: 16,
+  priceCoinIconSize: 15,
+  priceCoinGap: 3,
+  priceButtonColor: '#F57C00',
+  priceButtonDisabledAlpha: 0.45,
+  footerButtonWidth: 280,
+  footerButtonHeight: 80,
+  footerButtonBottomOffset: 140,
+  footerButtonFontSize: 18,
+  insufficientCoinsMessage: 'NOT ENOUGH COIN',
+  insufficientCoinsMessageFontSize: 14,
+  insufficientCoinsMessageOffsetY: 120,
+  insufficientCoinsMessageDurationMs: 2500,
+  insufficientCoinsMessageColor: '#FF5252',
+  coinBalanceMarginX: 60,
+  coinBalanceMarginY: 40,
+  coinBalanceIconSize: 22,
+  coinBalanceGap: 8,
+  coinBalanceFontSize: 16,
+  coinBalanceColor: '#FFFFFF'
+} as const;
+
+export type ShopMenuConfig = typeof SHOP_MENU_LAYOUT & {
+  titleText: string;
+  subtitleText: string;
+  footerButtonText: string;
+};
+
+// =============================================================================
+// MAIN SHOP — popup from welcome screen when player has no hearts
+// =============================================================================
+export const MAIN_SHOP_MENU: ShopMenuConfig = {
+  ...SHOP_MENU_LAYOUT,
+  titleText: 'OUT OF LIFE',
+  subtitleText: 'BUY MORE TO CONTINUE PLAYING',
+  footerButtonText: 'BACK'
+};
+
+export const STORE_BG_NATIVE = { width: 259, height: 130 };
+
+// =============================================================================
+// GAME OVER SHOP — shown after losing all hearts during a run
+// =============================================================================
+export const GAME_OVER_SHOP_MENU: ShopMenuConfig = {
+  ...SHOP_MENU_LAYOUT,
+  titleText: 'OUT OF LIFE',
+  subtitleText: 'BUY MORE TO CONTINUE PLAYING',
+  footerButtonText: 'MAIN MENU'
+};
+
+// =============================================================================
 // GAME OVER MENU LAYOUT — same panel style as welcome menu
 // =============================================================================
 export const GAME_OVER_MENU = {
@@ -262,7 +379,12 @@ export const PAUSE_MENU = {
   buttonGap: 20,
   buttonFontSize: 20,
   buttonCornerInset: 0,
-  buttonCornerArm: 10
+  buttonCornerArm: 10,
+
+  muteButtonSize: 30,
+  muteButtonInsetX: 40,
+  muteButtonInsetY: 35,
+  muteButtonHitPadding: 6
 };
 
 // =============================================================================
@@ -302,6 +424,10 @@ export const QUESTION_POPUP = {
 export const ANSWER_FEEDBACK_MS = 600;
 export const ANSWER_CORRECT_TINT = 'rgba(34, 197, 94, 0.55)';
 export const ANSWER_WRONG_TINT = 'rgba(239, 68, 68, 0.55)';
+export const WRONG_ANSWER_SCREEN_SHAKE = {
+  durationMs: 600,
+  amplitude: 14
+};
 
 export const COUNTDOWN_MS = 3000;
 export const COUNTDOWN = {
@@ -472,6 +598,16 @@ export const BUTTON_BG_SLICES = {
   bottom: 56
 };
 
+/** Hover / keyboard-focus animation for menu buttons. */
+export const MENU_BUTTON_HOVER = {
+  baseScale: 1.04,
+  pulseAmplitude: 0.018,
+  pulseSpeed: 0.009,
+  liftPx: 0.5,
+  focusOverlayAlpha: 0.24,
+  hoverOverlayAlpha: 0.18
+};
+
 export const font = menuFont;
 
 export const PLAYER_X = 0;
@@ -495,6 +631,7 @@ export const HUD_HEIGHT = s(52);
 export const HUD_PADDING = s(16);
 export const PAUSE_BTN_SIZE = s(40);
 export const PAUSE_BTN_NATIVE = { width: 164, height: 164 };
+export const MUTE_BTN_NATIVE = { width: 164, height: 164 };
 export const ARROW_KEY_NATIVE = { width: 92, height: 92 };
 export const HEART_SIZE = s(22);
 export const HUD_COIN_SIZE = s(24);
@@ -505,17 +642,17 @@ export const HUD = {
   scoreLabel: 'SCORE:',
   levelFontSize: 18,
   /** Display names for question levels 1–3 (index 0 = level 1). */
-  levelNames: ['EASY', 'MEDIUM', 'HARD'] as const,
+  levelNames: ['EASY', 'MEDIUM', 'ADVANCED'] as const,
   levelText: (level: number, levelName: string): string => 'LEVEL ' + level + ': ' + levelName
 };
-/** On-screen up/down controls for touch devices (auto-detected). */
+/** On-screen up/down controls for touch devices (auto-detected). Anchored to the right edge. */
 export const MOBILE_CONTROLS = {
   enabled: true,
   forceEnable: false,
-  buttonSize: 88,
+  buttonSize: 50,
   marginX: 28,
   marginBottom: 36,
-  buttonGap: 14,
+  buttonGap: 10,
   fillColor: 'rgba(28, 32, 42, 0.72)',
   fillPressedColor: 'rgba(245, 124, 0, 0.88)',
   borderColor: 'rgba(255, 255, 255, 0.55)',
@@ -533,24 +670,39 @@ export const WELCOME_PANEL_FILL = 'rgba(28, 32, 42, 0.9)';
 export const MUSIC_VOLUME = 0.35;
 export const SFX_VOLUME = 0.7;
 
-export const SHIELD_SPAWN_INTERVAL_MS = 15000;
+export const QUESTION_INTERVAL_MS = 15000;
+export const SHIELD_SPAWN_MIN_MS = 5000;
+export const SHIELD_SPAWN_MAX_MS = 7000;
+/** Power shield duration after a correct answer or in-game shield pickup. */
+export const POWER_SHIELD_DURATION_MS = 7000;
+/** Blink the shield aura when remaining time is at or below this threshold. */
+export const POWER_SHIELD_BLINK = {
+  warningMs: 3000,
+  minOpacity: 0.2,
+  maxOpacity: 0.95,
+  periodMs: 250
+};
+/** @deprecated Use SHIELD_SPAWN_MIN_MS / SHIELD_SPAWN_MAX_MS */
+export const SHIELD_SPAWN_INTERVAL_MS = QUESTION_INTERVAL_MS;
 export const GAME_SPEED_INITIAL = 1;
 export const GAME_SPEED_INCREMENT = 0.25;
 export const GAME_SPEED_MAX = 2;
 export const DEBUG_SPAWN_SHIELD_FIRST = false;
-/** Set true to auto-collect question shields as soon as they appear on screen. */
+/** Set true to auto-collect shield pickups and grant the power-up shield. */
 export const DEBUG_AUTO_COLLECT_SHIELDS = false;
 /** Set true to force free mode on the welcome screen (ignores SharePoint progress). */
 export const DEBUG_FORCE_FREE_MODE = false;
 /** Set true to show the level-complete congrats screen immediately when a game starts. */
 export const DEBUG_SHOW_LEVEL_COMPLETE_AT_START = false;
 /**
- * Set true to allow ?user=email@example.com to load/save progress for that user
- * instead of the signed-in SharePoint account (debug / QA only).
+ * Set true to allow ?user=email@example.com as a fallback when ?email= is not set (debug / QA only).
+ * Production flow uses ?email= from Register.aspx redirect.
  */
 export const DEBUG_ALLOW_URL_USER_OVERRIDE = true;
 /** Set true to skip Users list check and play with in-memory progress (local testing only). */
-export const DEBUG_SKIP_USER_CHECK = true;
+export const DEBUG_SKIP_USER_CHECK = false;
+/** Set true to force 0 hearts and auto-open the main-menu shop (shop UI debugging). */
+export const DEBUG_FORCE_ZERO_HEARTS = false;
 export const SPAWN_RETRY_DELAY_MS = 200;
 export const SPAWN_POSITION_ATTEMPTS = 16;
 export const SPAWN_SEPARATION = s(12);

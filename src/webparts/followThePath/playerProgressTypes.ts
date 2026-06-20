@@ -1,26 +1,44 @@
 import {
   MAX_QUESTION_LEVEL,
+  MAX_LIVES,
   QUESTIONS_PER_LEVEL,
   TOTAL_QUESTION_COUNT,
-  LEVEL_XP_REWARDS
+  LEVEL_XP_REWARDS,
+  DAILY_HEARTS
 } from './gameConfig';
+import type { AchievementSessionUpdate, GameAchievementData } from './gameAchievementTypes';
+import { createDefaultGameAchievementData } from './gameAchievementTypes';
+
+export type { AchievementSessionUpdate, DailyGameStatusRecord, GameAchievementData } from './gameAchievementTypes';
+export {
+  applyAchievementSessionUpdate,
+  createDefaultGameAchievementData,
+  getGameAchievementSelectFields,
+  mergeGameAchievementsForSave,
+  readGameAchievementsFromListItem,
+  writeGameAchievementsToBody
+} from './gameAchievementTypes';
 
 /**
  * Users list — one row per player (profile + cross-game totals).
  * Game1Data list — Follow the Path progress, linked by Email.
  *
- * Users columns (SharePoint internal names — do not change the list):
- * | Title | Email | TotalCoin | MiniQuestXP | MasteryQuestXP |
+ * Users columns used by Follow the Path (SharePoint internal names):
+ * | Title | Email | LOBT (Text or Lookup) | Market (Lookup — requires $expand) |
+ * | TotalCoin | TotalCoinEarned | TotalXP (read-only) |
+ * | TotalPlayedGameCount (internal name TotalPlayedGame) |
+ * | MiniQuestXP | MasteryQuestXP |
  * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
- * | Game2Level1XP | Game2Level2XP | Game2Level3XP |
  *
- * TotalXP is a read-only/calculated column on the list — never written by this game.
+ * TotalCoin — spendable balance (increases on earn, decreases on spend e.g. shop).
+ * TotalCoinEarned — lifetime coins earned; only ever increases.
+ * TotalXP is read-only on the list — never written by this game.
  *
  * Game1Data columns:
  * | Email | FollowThePath_HighScore | FollowThePath_Level (Text) | FollowThePath_LevelXp |
  * | FollowThePath_EarnedQuestions | FTPFreeMode |
- *
- * FollowThePath_LevelXp stores total XP earned across all completed levels (100+150+200 max).
+ * | FollowThePath_HeartsRemaining | FollowThePath_HeartsDay |
+ * | FirstTimePlay | PlayedCount | RePlayAfterCompleted | DailyGameStatus (JSON) | FlawlessCampaignComplete |
  */
 export const USERS_LIST_CONFIG = {
   listTitle: 'Users',
@@ -28,18 +46,47 @@ export const USERS_LIST_CONFIG = {
     id: 'Id',
     title: 'Title',
     email: 'Email',
+    lobt: 'LOBT',
+    market: 'Market',
     totalCoin: 'TotalCoin',
+    totalCoinEarned: 'TotalCoinEarned',
     totalXp: 'TotalXP',
     miniQuestXp: 'MiniQuestXP',
     masteryQuestXp: 'MasteryQuestXP',
     game1Level1Xp: 'Game1Level1XP',
     game1Level2Xp: 'Game1Level2XP',
     game1Level3Xp: 'Game1Level3XP',
-    game2Level1Xp: 'Game2Level1XP',
-    game2Level2Xp: 'Game2Level2XP',
-    game2Level3Xp: 'Game2Level3XP'
+    /** Display name TotalPlayedGameCount; SharePoint StaticName is TotalPlayedGame. */
+    totalPlayedGameCount: 'TotalPlayedGame'
   }
 } as const;
+
+/** Maximum value allowed by the Users list TotalPlayedGameCount column. */
+export const USERS_TOTAL_PLAYED_GAME_COUNT_MAX = 5;
+
+/** Users scalar columns for Follow the Path (excludes LOBT/Market — loaded with $expand). */
+export function getUsersListScalarSelectFieldsForGame1(): string[] {
+  const fields = USERS_LIST_CONFIG.fields;
+  return [
+    fields.id,
+    fields.title,
+    fields.email,
+    fields.totalCoin,
+    fields.totalCoinEarned,
+    fields.totalXp,
+    fields.totalPlayedGameCount,
+    fields.miniQuestXp,
+    fields.masteryQuestXp,
+    fields.game1Level1Xp,
+    fields.game1Level2Xp,
+    fields.game1Level3Xp
+  ];
+}
+
+/** @deprecated Use getUsersListScalarSelectFieldsForGame1 — Market requires a separate $expand query. */
+export function getUsersListSelectFieldsForGame1(): string[] {
+  return getUsersListScalarSelectFieldsForGame1();
+}
 
 export const GAME1_DATA_LIST_CONFIG = {
   listTitle: 'Game1Data',
@@ -50,7 +97,9 @@ export const GAME1_DATA_LIST_CONFIG = {
     level: 'FollowThePath_Level',
     levelXp: 'FollowThePath_LevelXp',
     earnedQuestions: 'FollowThePath_EarnedQuestions',
-    freeModeUnlocked: 'FTPFreeMode'
+    freeModeUnlocked: 'FTPFreeMode',
+    heartsRemaining: 'FollowThePath_HeartsRemaining',
+    heartsDay: 'FollowThePath_HeartsDay'
   }
 } as const;
 
@@ -61,18 +110,17 @@ export interface UserProfileRecord {
   listItemId?: number;
   title: string;
   email: string;
+  lobt: string;
   market: string;
-  busu: string;
   totalCoin: number;
+  totalCoinEarned: number;
   totalXp: number;
   miniQuestXp: number;
   masteryQuestXp: number;
   game1Level1Xp: number;
   game1Level2Xp: number;
   game1Level3Xp: number;
-  game2Level1Xp: number;
-  game2Level2Xp: number;
-  game2Level3Xp: number;
+  totalPlayedGameCount: number;
 }
 
 export interface FollowThePathProgressData {
@@ -81,6 +129,8 @@ export interface FollowThePathProgressData {
   levelXp: number;
   earnedQuestionSlots: boolean[];
   freeModeUnlocked: boolean;
+  heartsRemaining: number;
+  heartsDay: string;
 }
 
 /** Progress for this game, plus shared cross-game totals from the Users list. */
@@ -94,6 +144,9 @@ export interface PlayerProgressRecord {
   levelXp: number;
   earnedQuestionSlots: boolean[];
   freeModeUnlocked: boolean;
+  heartsRemaining: number;
+  heartsDay: string;
+  achievements: GameAchievementData;
 }
 
 export interface PlayerSession {
@@ -105,8 +158,8 @@ export interface PlayerSession {
 export interface UserRegistrationInput {
   title: string;
   email: string;
+  lobt: string;
   market: string;
-  busu: string;
 }
 
 /** Payload sent to SharePoint after each completed game. */
@@ -118,6 +171,57 @@ export interface GameSessionResult {
   xpGainedThisSession: number;
   earnedQuestionSlots: boolean[];
   freeModeUnlocked: boolean;
+  heartsRemaining: number;
+  heartsDay: string;
+  achievementUpdate?: AchievementSessionUpdate;
+}
+
+export function getDailyHeartsDayKey(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: DAILY_HEARTS.timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(now);
+}
+
+export function resolveDailyHearts(
+  heartsRemaining: number | undefined,
+  heartsDay: string | undefined,
+  now: Date = new Date()
+): { heartsRemaining: number; heartsDay: string } {
+  const today = getDailyHeartsDayKey(now);
+
+  if (!heartsDay || heartsDay !== today) {
+    return {
+      heartsRemaining: MAX_LIVES,
+      heartsDay: today
+    };
+  }
+
+  const remaining =
+    heartsRemaining === undefined || isNaN(heartsRemaining)
+      ? MAX_LIVES
+      : Math.max(0, Math.min(MAX_LIVES, heartsRemaining));
+
+  return {
+    heartsRemaining: remaining,
+    heartsDay: today
+  };
+}
+
+/** Apply daily heart rules when the game session opens (always full hearts for today). */
+export function resolveDailyHeartsOnGameLoad(
+  heartsRemaining: number | undefined,
+  heartsDay: string | undefined,
+  now: Date = new Date()
+): { heartsRemaining: number; heartsDay: string } {
+  const { heartsDay: todayKey } = resolveDailyHearts(heartsRemaining, heartsDay, now);
+
+  return {
+    heartsRemaining: MAX_LIVES,
+    heartsDay: todayKey
+  };
 }
 
 export function createEmptyEarnedQuestionSlots(): boolean[] {
@@ -129,12 +233,15 @@ export function createEmptyEarnedQuestionSlots(): boolean[] {
 }
 
 export function createDefaultFollowThePathProgress(): FollowThePathProgressData {
+  const heartsDay = getDailyHeartsDayKey();
   return {
     highScore: 0,
     level: 1,
     levelXp: 0,
     earnedQuestionSlots: createEmptyEarnedQuestionSlots(),
-    freeModeUnlocked: false
+    freeModeUnlocked: false,
+    heartsRemaining: MAX_LIVES,
+    heartsDay
   };
 }
 
@@ -142,24 +249,56 @@ export function createDefaultUserProfile(email: string, title: string = ''): Use
   return {
     title: title || email,
     email,
+    lobt: '',
     market: '',
-    busu: '',
     totalCoin: 0,
+    totalCoinEarned: 0,
     totalXp: 0,
     miniQuestXp: 0,
     masteryQuestXp: 0,
     game1Level1Xp: 0,
     game1Level2Xp: 0,
     game1Level3Xp: 0,
-    game2Level1Xp: 0,
-    game2Level2Xp: 0,
-    game2Level3Xp: 0
+    totalPlayedGameCount: 0
   };
 }
 
 export function createDefaultPlayerProgress(): PlayerProgressRecord {
   const game = createDefaultFollowThePathProgress();
   return followThePathProgressToRecord(game, 0, 0);
+}
+
+export function isUserProfileComplete(profile: Pick<UserProfileRecord, 'lobt' | 'market'>): boolean {
+  return profile.lobt.trim().length > 0 && profile.market.trim().length > 0;
+}
+
+function readListTextValue(item: Record<string, unknown>, ...keys: string[]): string {
+  for (let i = 0; i < keys.length; i++) {
+    const value = item[keys[i]];
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>;
+      const nested = record.Title ?? record.Value ?? record.Label ?? record.title;
+      if (nested !== undefined && nested !== null) {
+        const text = String(nested).trim();
+        if (text.length > 0) {
+          return text;
+        }
+      }
+
+      continue;
+    }
+
+    const text = String(value).trim();
+    if (text.length > 0) {
+      return text;
+    }
+  }
+
+  return '';
 }
 
 export function getProgressLevelFromSlots(earnedQuestionSlots: boolean[]): number {
@@ -264,7 +403,8 @@ export function followThePathProgressToRecord(
   game: FollowThePathProgressData,
   totalXp: number,
   totalCoins: number,
-  ids?: { usersListItemId?: number; game1DataListItemId?: number }
+  ids?: { usersListItemId?: number; game1DataListItemId?: number },
+  achievements: GameAchievementData = createDefaultGameAchievementData()
 ): PlayerProgressRecord {
   const earnedQuestionSlots = parseEarnedQuestionSlots(game.earnedQuestionSlots);
   const level = getProgressLevelFromSlots(earnedQuestionSlots);
@@ -278,7 +418,10 @@ export function followThePathProgressToRecord(
     level,
     levelXp: getTotalEarnedXpFromSlots(earnedQuestionSlots),
     earnedQuestionSlots,
-    freeModeUnlocked: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned)
+    freeModeUnlocked: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned),
+    heartsRemaining: game.heartsRemaining,
+    heartsDay: game.heartsDay,
+    achievements
   };
 }
 
@@ -291,7 +434,9 @@ export function buildFollowThePathProgressFromSession(session: GameSessionResult
     level,
     levelXp: getTotalEarnedXpFromSlots(earnedQuestionSlots),
     earnedQuestionSlots,
-    freeModeUnlocked: session.freeModeUnlocked
+    freeModeUnlocked: session.freeModeUnlocked,
+    heartsRemaining: session.heartsRemaining,
+    heartsDay: session.heartsDay
   };
 }
 
@@ -318,6 +463,7 @@ export function mergeFollowThePathProgressForSave(
     session.earnedQuestionSlots,
     server.earnedQuestionSlots
   );
+  const hearts = resolveDailyHearts(session.heartsRemaining, session.heartsDay);
 
   return {
     highScore: Math.max(session.highScore, server.highScore),
@@ -327,30 +473,22 @@ export function mergeFollowThePathProgressForSave(
     freeModeUnlocked:
       session.freeModeUnlocked ||
       server.freeModeUnlocked ||
-      earnedQuestionSlots.every((earned) => earned)
+      earnedQuestionSlots.every((earned) => earned),
+    heartsRemaining: hearts.heartsRemaining,
+    heartsDay: hearts.heartsDay
   };
 }
 
 export function computeUserTotalXp(profile: Pick<
   UserProfileRecord,
-  | 'miniQuestXp'
-  | 'masteryQuestXp'
-  | 'game1Level1Xp'
-  | 'game1Level2Xp'
-  | 'game1Level3Xp'
-  | 'game2Level1Xp'
-  | 'game2Level2Xp'
-  | 'game2Level3Xp'
+  'miniQuestXp' | 'masteryQuestXp' | 'game1Level1Xp' | 'game1Level2Xp' | 'game1Level3Xp'
 >): number {
   return (
     profile.miniQuestXp +
     profile.masteryQuestXp +
     profile.game1Level1Xp +
     profile.game1Level2Xp +
-    profile.game1Level3Xp +
-    profile.game2Level1Xp +
-    profile.game2Level2Xp +
-    profile.game2Level3Xp
+    profile.game1Level3Xp
   );
 }
 
@@ -361,18 +499,17 @@ export function readUserProfileFromListItem(item: Record<string, unknown>): User
     listItemId: toOptionalId(item[fields.id]),
     title: String(item[fields.title] || ''),
     email: String(item[fields.email] || ''),
-    market: '',
-    busu: '',
+    lobt: readListTextValue(item, fields.lobt, 'LOBT', 'lobt'),
+    market: readListTextValue(item, fields.market, 'Market', 'market'),
     totalCoin: toNumber(item[fields.totalCoin]),
+    totalCoinEarned: toNumber(item[fields.totalCoinEarned]),
     totalXp: 0,
     miniQuestXp: toNumber(item[fields.miniQuestXp]),
     masteryQuestXp: toNumber(item[fields.masteryQuestXp]),
     game1Level1Xp: toNumber(item[fields.game1Level1Xp]),
     game1Level2Xp: toNumber(item[fields.game1Level2Xp]),
     game1Level3Xp: toNumber(item[fields.game1Level3Xp]),
-    game2Level1Xp: toNumber(item[fields.game2Level1Xp]),
-    game2Level2Xp: toNumber(item[fields.game2Level2Xp]),
-    game2Level3Xp: toNumber(item[fields.game2Level3Xp])
+    totalPlayedGameCount: toNumber(item[fields.totalPlayedGameCount])
   };
 
   const rawTotalXp = item[fields.totalXp];
@@ -389,6 +526,10 @@ export function readFollowThePathProgressFromListItem(
 ): FollowThePathProgressData {
   const fields = GAME1_DATA_LIST_CONFIG.fields;
   const earnedQuestionSlots = parseEarnedQuestionSlotsFromJson(String(item[fields.earnedQuestions] || ''));
+  const hearts = resolveDailyHearts(
+    toNumber(item[fields.heartsRemaining]),
+    String(item[fields.heartsDay] || '')
+  );
 
   return {
     highScore: toNumber(item[fields.highScore]),
@@ -400,7 +541,9 @@ export function readFollowThePathProgressFromListItem(
       item[fields.freeModeUnlocked] === 1 ||
       item[fields.freeModeUnlocked] === 'true' ||
       item[fields.freeModeUnlocked] === '1' ||
-      earnedQuestionSlots.every((earned) => earned)
+      earnedQuestionSlots.every((earned) => earned),
+    heartsRemaining: hearts.heartsRemaining,
+    heartsDay: hearts.heartsDay
   };
 }
 
@@ -410,13 +553,29 @@ export function writeFollowThePathProgressToBody(
   const fields = GAME1_DATA_LIST_CONFIG.fields;
   const earnedQuestionSlots = parseEarnedQuestionSlots(game.earnedQuestionSlots);
   const level = getProgressLevelFromSlots(earnedQuestionSlots);
+  const hearts = resolveDailyHearts(game.heartsRemaining, game.heartsDay);
 
   return {
     [fields.highScore]: game.highScore,
     [fields.level]: String(level),
     [fields.levelXp]: getTotalEarnedXpFromSlots(earnedQuestionSlots),
     [fields.earnedQuestions]: serializeEarnedQuestionSlots(earnedQuestionSlots),
-    [fields.freeModeUnlocked]: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned)
+    [fields.freeModeUnlocked]: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned),
+    [fields.heartsRemaining]: hearts.heartsRemaining,
+    [fields.heartsDay]: hearts.heartsDay
+  };
+}
+
+export function writeDailyHeartsToBody(
+  heartsRemaining: number,
+  heartsDay: string
+): Record<string, string | number> {
+  const fields = GAME1_DATA_LIST_CONFIG.fields;
+  const hearts = resolveDailyHearts(heartsRemaining, heartsDay);
+
+  return {
+    [fields.heartsRemaining]: hearts.heartsRemaining,
+    [fields.heartsDay]: hearts.heartsDay
   };
 }
 
@@ -437,20 +596,41 @@ export function writeUserTotalsToBody(
   profile: UserProfileRecord,
   earnedQuestionSlots: boolean[],
   coinsCollected: number
-): Record<string, string | number> {
+): Record<string, number> {
   const fields = USERS_LIST_CONFIG.fields;
   const levelXp = getGame1LevelXpTotals(earnedQuestionSlots);
+  const coinsEarned = Math.max(0, coinsCollected);
 
   return {
-    [fields.totalCoin]: profile.totalCoin + coinsCollected,
-    [fields.miniQuestXp]: profile.miniQuestXp,
-    [fields.masteryQuestXp]: profile.masteryQuestXp,
+    [fields.totalCoin]: profile.totalCoin + coinsEarned,
+    [fields.totalCoinEarned]: profile.totalCoinEarned + coinsEarned,
     [fields.game1Level1Xp]: Math.max(profile.game1Level1Xp, levelXp.game1Level1Xp),
     [fields.game1Level2Xp]: Math.max(profile.game1Level2Xp, levelXp.game1Level2Xp),
-    [fields.game1Level3Xp]: Math.max(profile.game1Level3Xp, levelXp.game1Level3Xp),
-    [fields.game2Level1Xp]: profile.game2Level1Xp,
-    [fields.game2Level2Xp]: profile.game2Level2Xp,
-    [fields.game2Level3Xp]: profile.game2Level3Xp
+    [fields.game1Level3Xp]: Math.max(profile.game1Level3Xp, levelXp.game1Level3Xp)
+  };
+}
+
+/** Increment TotalPlayedGameCount on first Game 1 play (Users list). */
+export function writeUserTotalPlayedGameCountIncrementBody(
+  profile: UserProfileRecord
+): Record<string, number> {
+  const fields = USERS_LIST_CONFIG.fields;
+  const nextCount = Math.min(USERS_TOTAL_PLAYED_GAME_COUNT_MAX, profile.totalPlayedGameCount + 1);
+
+  return {
+    [fields.totalPlayedGameCount]: nextCount
+  };
+}
+
+/** Deduct spendable coins only (TotalCoinEarned is never reduced). */
+export function writeUserCoinSpendBody(
+  profile: UserProfileRecord,
+  coinCost: number
+): Record<string, number> {
+  const fields = USERS_LIST_CONFIG.fields;
+
+  return {
+    [fields.totalCoin]: Math.max(0, profile.totalCoin - Math.max(0, coinCost))
   };
 }
 
@@ -461,19 +641,21 @@ export function writeUserRegistrationBody(input: UserRegistrationInput): Record<
     Title: input.title,
     [fields.email]: input.email,
     [fields.totalCoin]: 0,
+    [fields.totalCoinEarned]: 0,
     [fields.miniQuestXp]: 0,
     [fields.masteryQuestXp]: 0,
     [fields.game1Level1Xp]: 0,
     [fields.game1Level2Xp]: 0,
-    [fields.game1Level3Xp]: 0,
-    [fields.game2Level1Xp]: 0,
-    [fields.game2Level2Xp]: 0,
-    [fields.game2Level3Xp]: 0
+    [fields.game1Level3Xp]: 0
   };
 }
 
 function toNumber(value: unknown): number {
-  const parsed = typeof value === 'number' ? value : parseInt(String(value), 10);
+  if (typeof value === 'number' && !isNaN(value)) {
+    return value;
+  }
+
+  const parsed = parseInt(String(value).replace(/,/g, ''), 10);
   return isNaN(parsed) ? 0 : parsed;
 }
 
