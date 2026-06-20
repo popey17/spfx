@@ -114,12 +114,8 @@ const Leaderboard: React.FC<ILeaderboardProps> = ({
   const [activeTab, setActiveTab] = React.useState<LeaderboardTab>('individual');
 
   const individualRows = data?.individual || [];
-  const lobtRows = data?.lobt || [];
-  const hasScroll = status === 'ready' && (
-    activeTab === 'individual'
-      ? individualRows.length > 4
-      : lobtRows.length > 4
-  );
+  const lobtRows = (data?.lobt || []).slice(0, 5);
+  const hasScroll = status === 'ready' && activeTab === 'individual' && individualRows.length > 4;
 
   return (
     <div className={styles.leaderboardRoot}>

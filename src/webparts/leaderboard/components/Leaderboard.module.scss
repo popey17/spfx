@@ -8,6 +8,11 @@ $header-bg: #000000;
 $row-bg: rgba(40, 42, 48, 0.72);
 $font-stack: 'Francois One', sans-serif;
 
+$design-width: 1370;
+$design-height: 835;
+$design-inner-width: 1360;
+$design-inner-height: 834;
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -20,28 +25,29 @@ $font-stack: 'Francois One', sans-serif;
 
 .leaderboardRoot {
   box-sizing: border-box;
-  width: 100vh;
-  min-height: 100dvh;
-  padding: 24px 16px;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: clamp(12px, 2.5vw, 24px) clamp(8px, 2vw, 16px);
   background: rgba(0, 0, 0, 0.4);
   font-family: $font-stack;
   color: $text;
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 9999;
 }
 
 .panel {
-  aspect-ratio: 1486 / 907;
-  width: 100%;
-  max-width: 1486px;
-  padding: 55px 58px 0 ;
+  container-type: inline-size;
+  container-name: leaderboard-panel;
+  position: relative;
+  aspect-ratio: #{$design-width} / #{$design-height};
+  width: min(
+    calc(100vw - 32px),
+    calc((100dvh - 48px) * #{$design-width} / #{$design-height}),
+    1369px
+  );
+  max-height: calc(100dvh - 48px);
 }
 
 .panel__inner {
@@ -52,18 +58,22 @@ $font-stack: 'Francois One', sans-serif;
   background-repeat: no-repeat;
   width: 100%;
   height: 100%;
-  padding-inline: calc(( 70 / 1370 ) * 100%);
-  padding-top: calc((60 / 852 ) * 100%);
+  padding-inline: calc((70 / #{$design-inner-width}) * 100%);
+  padding-top: calc((60 / #{$design-inner-height}) * 100%);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .closeButton {
   position: absolute;
-  top: calc(( 20 / 907 ) * 100%);
-  right: calc(( -7 / 1486 ) * 100%);
-  width: calc(( 82 / 1486 ) * 100%);
+  top: calc((20 / #{$design-height}) * 100%);
+  right: calc((-7 / #{$design-width}) * 100%);
+  width: calc((82 / #{$design-width}) * 100%);
   aspect-ratio: 82 / 82;
   background: transparent;
   transition: all 0.3s ease;
+  z-index: 3;
   img {
     width: 100%;
     height: 100%;
@@ -78,20 +88,25 @@ $font-stack: 'Francois One', sans-serif;
 }
 
 .headerRibbon {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  margin: 0 auto -3.5%;
-  width: calc(( 595 / 1370 ) * 100%);
+  width: calc((595 / #{$design-inner-width}) * 100%);
   aspect-ratio: 595 / 88;
   background: url('../assets/img_headerBg.png') no-repeat center center;
   background-size: cover;
+  margin-top: -3.5%;
 }
 
 .crown {
   aspect-ratio: 68 / 55;
-  width: calc( ( 68 / 595 ) * 100%);
+  width: calc((63 / 595) * 100%);
   height: auto;
   overflow: hidden;
   img {
@@ -102,27 +117,28 @@ $font-stack: 'Francois One', sans-serif;
 }
 
 .headerTitle {
-  font-size: clamp(16px, 2.5vw, 46px);
+  font-size: clamp(16px, calc((46 / #{$design-width}) * 100cqi), 46px);
   line-height: 1;
-  text-shadow: 0px 4.33907px 0px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 calc((4.33907 / #{$design-width}) * 100cqi) 0 rgba(0, 0, 0, 0.35);
   text-transform: uppercase;
 }
 
 .tabRow {
   display: flex;
   justify-content: center;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: calc((16 / #{$design-width}) * 100cqi);
+  margin-bottom: calc((20 / #{$design-width}) * 100cqi);
+  flex-shrink: 0;
 }
 
 .tabButton {
-  min-width: 160px;
-  padding: clamp(10px,  1vw, 15px) clamp(20px, 2.5vw, 36px);
+  min-width: calc((160 / #{$design-width}) * 100cqi);
+  padding: calc((15 / #{$design-width}) * 100cqi) calc((36 / #{$design-width}) * 100cqi);
   color: $text;
-  font-size: clamp(14px, 2.5vw, 32px);
+  font-size: clamp(14px, calc((32 / #{$design-width}) * 100cqi), 32px);
   font-weight: 700;
   letter-spacing: 0.06em;
-  border: 4px solid #FF8C00;
+  border: max(2px, calc((4 / #{$design-width}) * 100cqi)) solid #FF8C00;
   background: transparent;
   cursor: pointer;
   line-height: 1;
@@ -143,31 +159,34 @@ $font-stack: 'Francois One', sans-serif;
 }
 
 .subtitle {
-  margin: 0 0 30px;
-  text-align: center; 
-  font-size: clamp(18px, 2.5vw, 52px);
+  margin: 0 0 calc((30 / #{$design-width}) * 100cqi);
+  text-align: center;
+  font-size: clamp(18px, calc((52 / #{$design-width}) * 100cqi), 52px);
   font-weight: 700;
   letter-spacing: 0.05em;
+  flex-shrink: 0;
 }
 
 .tableWrapper {
   overflow-y: auto;
-  padding-right: 4px;
-  max-height: calc(( 396 / 755 ) * 100%);
+  padding-right: calc((4 / #{$design-width}) * 100cqi);
+  flex: 1;
+  min-height: 0;
+  max-height: calc((458 / #{$design-inner-height}) * 100%);
 
   &::-webkit-scrollbar {
-    width: 6px;
+    width: calc((6 / #{$design-width}) * 100cqi);
   }
 
   &::-webkit-scrollbar-thumb {
     background: rgba(245, 124, 0, 0.55);
-    border-radius: 3px;
+    border-radius: calc((3 / #{$design-width}) * 100cqi);
   }
 }
 
 .tableStateCell {
   flex: 1 1 100%;
-  padding: 48px 16px !important;
+  padding: calc((48 / #{$design-width}) * 100cqi) calc((16 / #{$design-width}) * 100cqi) !important;
   text-align: center;
   background: transparent !important;
   justify-content: center;
@@ -175,7 +194,7 @@ $font-stack: 'Francois One', sans-serif;
 
 .tableStateMessage {
   display: inline-block;
-  font-size: 15px;
+  font-size: clamp(13px, calc((15 / #{$design-width}) * 100cqi), 15px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.88);
 }
@@ -191,15 +210,15 @@ $font-stack: 'Francois One', sans-serif;
 
   .tableRow {
     background: $header-bg;
-    border-radius: 9px;
+    border-radius: calc((9 / #{$design-width}) * 100cqi);
   }
 }
 
 .tableBody {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
+  gap: calc((10 / #{$design-width}) * 100cqi);
+  margin-top: calc((10 / #{$design-width}) * 100cqi);
 }
 
 .tableRow {
@@ -210,14 +229,14 @@ $font-stack: 'Francois One', sans-serif;
 
 .tableBody .tableRow {
   background: rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
+  border-radius: calc((8 / #{$design-width}) * 100cqi);
 }
 
 .tableCell {
   display: flex;
   align-items: center;
-  padding: 12px 14px;
-  font-size: clamp(14px, 2.5vw, 24px);
+  padding: calc((12 / #{$design-width}) * 100cqi) calc((14 / #{$design-width}) * 100cqi);
+  font-size: clamp(14px, calc((24 / #{$design-width}) * 100cqi), 24px);
   font-family: 'Open Sans', sans-serif;
   font-weight: 900;
   word-break: break-word;
@@ -225,20 +244,20 @@ $font-stack: 'Francois One', sans-serif;
 }
 
 .tableHead .tableCell {
-  padding: 12px 12px;
+  padding: calc((12 / #{$design-width}) * 100cqi);
   text-align: left;
-  font-size: clamp(14px, 2.5vw, 24px);
+  font-size: clamp(14px, calc((24 / #{$design-width}) * 100cqi), 24px);
   font-weight: 900;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .colRank {
-  width: calc(( 150 / 1220 ) * 100%);
+  width: calc((150 / 1220) * 100%);
 }
 
 .colName {
-  width: calc(( 300 / 1220 ) * 100%);
+  width: calc((300 / 1220) * 100%);
 }
 
 .colLobt {
@@ -246,7 +265,7 @@ $font-stack: 'Francois One', sans-serif;
 }
 
 .colLobtTab {
-  width: calc(( 300 / 1220 ) * 100%);
+  width: calc((300 / 1220) * 100%);
 }
 
 .colPlayerCount {
@@ -254,55 +273,34 @@ $font-stack: 'Francois One', sans-serif;
 }
 
 .colXp {
-  width: calc(( 270 / 1220 ) * 100%);
+  width: calc((270 / 1220) * 100%);
 }
 
 .colXpLobt {
-  width: calc(( 270 / 1220 ) * 100%);
+  width: calc((270 / 1220) * 100%);
 }
 
 .rankBadge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: calc(( 52 / 122 ) * 100%);
+  width: calc((52 / 122) * 100%);
   aspect-ratio: 52 / 52;
   height: auto;
   border-radius: 50%;
   background: $rank-red;
   color: $text;
-  font-size: clamp(14px, 2.5vw, 29px);
+  font-size: clamp(14px, calc((29 / #{$design-width}) * 100cqi), 29px);
   font-weight: 700;
 }
 
 .scrollIndicator {
-  width: calc(( 37 / 1370 ) * 100%);
-  height: calc(( 22 / 755 ) * 100%);
-  margin: 33px auto 0;
+  width: calc((37 / #{$design-inner-width}) * 100%);
+  height: calc((22 / #{$design-inner-height}) * 100%);
+  margin: calc((33 / #{$design-width}) * 100cqi) auto 0;
+  flex-shrink: 0;
   background: url("data:image/svg+xml,%3Csvg%20width%3D%2227%22%20height%3D%2216%22%20viewBox%3D%220%200%2027%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cpath%20d%3D%22M14.7308%2015.0223C13.9452%2015.8313%2012.6466%2015.8313%2011.861%2015.0223L0.569269%203.39325C-0.662128%202.12507%200.236482%20-1.05569e-06%202.00414%20-1.21022e-06L24.5877%20-3.18453e-06C26.3553%20-3.33907e-06%2027.2539%202.12507%2026.0225%203.39325L14.7308%2015.0223Z%22%20fill%3D%22white%22/%3E%3C/svg%3E") no-repeat center center;
   background-size: contain;
   background-position: center center;
   background-repeat: no-repeat;
 }
-
-// @media (max-width: 640px) {
-//   .panel {
-//     padding: 48px 16px 28px;
-//   }
-
-//   .tabButton {
-//     min-width: 0;
-//     flex: 1;
-//     padding: 10px 12px;
-//     font-size: 12px;
-//   }
-
-//   .headerTitle {
-//     font-size: 18px;
-//   }
-
-//   .tableCell {
-//     padding: 10px 8px;
-//     font-size: 13px;
-//   }
-// }

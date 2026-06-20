@@ -12,8 +12,10 @@ export interface SharePointLeaderboardServiceOptions {
   usersListTitle?: string;
   /** LOBT reference list — department types. Defaults to LOBT. */
   lobtListTitle?: string;
-  /** Maximum rows to return per tab. Defaults to 20. */
+  /** Maximum rows for the individual tab. Defaults to 20. */
   topCount?: number;
+  /** Maximum rows for the LOBT tab. Defaults to 5. */
+  lobtTopCount?: number;
 }
 
 interface IListQueryOptions {
@@ -35,12 +37,14 @@ export class SharePointLeaderboardService implements ILeaderboardService {
   private readonly _usersListTitle: string;
   private readonly _lobtListTitle: string;
   private readonly _topCount: number;
+  private readonly _lobtTopCount: number;
 
   public constructor(context: WebPartContext, options: SharePointLeaderboardServiceOptions = {}) {
     this._context = context;
     this._usersListTitle = options.usersListTitle || USERS_LIST_CONFIG.listTitle;
     this._lobtListTitle = options.lobtListTitle || LOBT_LIST_CONFIG.listTitle;
     this._topCount = options.topCount ?? 20;
+    this._lobtTopCount = options.lobtTopCount ?? 5;
   }
 
   public async loadLeaderboard(): Promise<LeaderboardData> {
@@ -64,7 +68,7 @@ export class SharePointLeaderboardService implements ILeaderboardService {
 
     return {
       individual: buildIndividualRanking(individualRows, this._topCount),
-      lobt: buildLobtRankingFromTotals(lobtTotals, this._topCount)
+      lobt: buildLobtRankingFromTotals(lobtTotals, this._lobtTopCount)
     };
   }
 

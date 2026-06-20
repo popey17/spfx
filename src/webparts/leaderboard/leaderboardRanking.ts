@@ -5,10 +5,14 @@ import type {
   UsersListRow
 } from './leaderboardTypes';
 
-export function buildLeaderboardFromUsersRows(rows: UsersListRow[], topCount: number): LeaderboardData {
+export function buildLeaderboardFromUsersRows(
+  rows: UsersListRow[],
+  individualTopCount: number,
+  lobtTopCount = 5
+): LeaderboardData {
   return {
-    individual: buildIndividualRanking(rows, topCount),
-    lobt: buildLobtRankingFromUsers(rows, topCount)
+    individual: buildIndividualRanking(rows, individualTopCount),
+    lobt: buildLobtRankingFromUsers(rows, lobtTopCount)
   };
 }
 
