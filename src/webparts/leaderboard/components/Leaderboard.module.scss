@@ -1,0 +1,293 @@
+$accent: #f57c00;
+$accent-bright: #ff8c00;
+$panel-bg: rgba(28, 30, 36, 0.96);
+$panel-border: 3px solid $accent;
+$text: #ffffff;
+$rank-red: #e60000;
+$header-bg: #000000;
+$row-bg: rgba(40, 42, 48, 0.72);
+$font-stack: 'Francois One', sans-serif;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 100%;
+  font: inherit;
+  vertical-align: baseline;
+}
+
+.leaderboardRoot {
+  box-sizing: border-box;
+  width: 100vh;
+  min-height: 100dvh;
+  padding: 24px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  font-family: $font-stack;
+  color: $text;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+}
+
+.panel {
+  aspect-ratio: 1486 / 907;
+  width: 100%;
+  max-width: 1486px;
+  padding: 55px 58px 0 ;
+}
+
+.panel__inner {
+  background-image: url('../assets/img_bg.png');
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  width: 100%;
+  height: 100%;
+  padding-inline: calc(( 70 / 1370 ) * 100%);
+  padding-top: calc((60 / 852 ) * 100%);
+}
+
+.closeButton {
+  position: absolute;
+  top: calc(( 20 / 907 ) * 100%);
+  right: calc(( -7 / 1486 ) * 100%);
+  width: calc(( 82 / 1486 ) * 100%);
+  aspect-ratio: 82 / 82;
+  background: transparent;
+  transition: all 0.3s ease;
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+
+  &:hover {
+    cursor: pointer;
+    transform: scale(1.05);
+  }
+}
+
+.headerRibbon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 auto -3.5%;
+  width: calc(( 595 / 1370 ) * 100%);
+  aspect-ratio: 595 / 88;
+  background: url('../assets/img_headerBg.png') no-repeat center center;
+  background-size: cover;
+}
+
+.crown {
+  aspect-ratio: 68 / 55;
+  width: calc( ( 68 / 595 ) * 100%);
+  height: auto;
+  overflow: hidden;
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+}
+
+.headerTitle {
+  font-size: clamp(16px, 2.5vw, 46px);
+  line-height: 1;
+  text-shadow: 0px 4.33907px 0px rgba(0, 0, 0, 0.35);
+  text-transform: uppercase;
+}
+
+.tabRow {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.tabButton {
+  min-width: 160px;
+  padding: 15px 36px;
+  color: $text;
+  font-size: clamp(14px, 2.5vw, 32px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 4px solid #FF8C00;
+  background: transparent;
+  cursor: pointer;
+  line-height: 1;
+  transition: all 0.3s ease;
+
+  &:hover {
+    background: #D06800;
+  }
+}
+
+.tabButtonActive {
+  background: #D06800;
+  color: $text;
+
+  &:hover {
+    background: $accent-bright;
+  }
+}
+
+.subtitle {
+  margin: 0 0 16px;
+  text-align: center; 
+  font-size: clamp(18px, 2.5vw, 52px);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.tableWrapper {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+  min-height: calc(( 388 / 852 ) * 100%);
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(245, 124, 0, 0.55);
+    border-radius: 3px;
+  }
+}
+
+.tableStateCell {
+  padding: 48px 16px !important;
+  text-align: center;
+  background: transparent !important;
+}
+
+.tableStateMessage {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 6px;
+
+  thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-radius: 9px;
+  }
+
+  thead tr {
+    background: $header-bg;
+  }
+
+  th {
+    padding: 10px 12px;
+    text-align: left;
+    font-size: clamp(14px, 2.5vw, 24px);
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    font-family: 'Open Sans', sans-serif;
+    text-transform: uppercase;
+  }
+
+  tbody tr {
+    background: $row-bg;
+  }
+
+  td {
+    padding: 12px;
+    font-size: clamp(14px, 2.5vw, 24px);
+    font-family: 'Open Sans', sans-serif;
+    font-weight: 900;
+    vertical-align: middle;
+    word-break: break-word;
+  }
+
+  th:nth-child(2),
+  td:nth-child(2) {
+    width: 30%;
+  }
+
+  th:nth-child(3),
+  td:nth-child(3) {
+    width: 38%;
+  }
+}
+
+.rankHeader {
+  width: 56px;
+}
+
+.xpHeader,
+.xpCell {
+  text-align: right;
+  width: 18%;
+}
+
+.rankCell {
+  width: 56px;
+  text-align: center;
+}
+
+.rankBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: $rank-red;
+  color: $text;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.scrollIndicator {
+  width: 0;
+  height: 0;
+  margin: 14px auto 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 10px solid $text;
+  opacity: 0.85;
+}
+
+@media (max-width: 640px) {
+  .panel {
+    padding: 48px 16px 28px;
+  }
+
+  .tabButton {
+    min-width: 0;
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .headerTitle {
+    font-size: 18px;
+  }
+
+  .table {
+    th,
+    td {
+      padding: 10px 8px;
+      font-size: 13px;
+    }
+  }
+}

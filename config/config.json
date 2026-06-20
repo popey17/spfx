@@ -9,10 +9,19 @@
           "manifest": "./src/webparts/followThePath/FollowThePathWebPart.manifest.json"
         }
       ]
+    },
+    "leaderboard-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/leaderboard/LeaderboardWebPart.js",
+          "manifest": "./src/webparts/leaderboard/LeaderboardWebPart.manifest.json"
+        }
+      ]
     }
   },
   "externals": {},
   "localizedResources": {
-    "FollowThePathWebPartStrings": "lib/webparts/followThePath/loc/{locale}.js"
+    "FollowThePathWebPartStrings": "lib/webparts/followThePath/loc/{locale}.js",
+    "LeaderboardWebPartStrings": "lib/webparts/leaderboard/loc/{locale}.js"
   }
 }
