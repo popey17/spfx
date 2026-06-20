@@ -6,14 +6,27 @@ import {
   LEVEL_XP_REWARDS,
   DAILY_HEARTS
 } from './gameConfig';
+import type { AchievementSessionUpdate, GameAchievementData } from './gameAchievementTypes';
+import { createDefaultGameAchievementData } from './gameAchievementTypes';
+
+export type { AchievementSessionUpdate, DailyGameStatusRecord, GameAchievementData } from './gameAchievementTypes';
+export {
+  applyAchievementSessionUpdate,
+  createDefaultGameAchievementData,
+  getGameAchievementSelectFields,
+  mergeGameAchievementsForSave,
+  readGameAchievementsFromListItem,
+  writeGameAchievementsToBody
+} from './gameAchievementTypes';
 
 /**
  * Users list — one row per player (profile + cross-game totals).
  * Game1Data list — Follow the Path progress, linked by Email.
  *
  * Users columns used by Follow the Path (SharePoint internal names):
- * | Title | Email | LOBT | Market |
+ * | Title | Email | LOBT (Text or Lookup) | Market (Lookup — requires $expand) |
  * | TotalCoin | TotalCoinEarned | TotalXP (read-only) |
+ * | TotalPlayedGameCount (internal name TotalPlayedGame) |
  * | MiniQuestXP | MasteryQuestXP |
  * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
  *
@@ -25,6 +38,7 @@ import {
  * | Email | FollowThePath_HighScore | FollowThePath_Level (Text) | FollowThePath_LevelXp |
  * | FollowThePath_EarnedQuestions | FTPFreeMode |
  * | FollowThePath_HeartsRemaining | FollowThePath_HeartsDay |
+ * | FirstTimePlay | PlayedCount | RePlayAfterCompleted | DailyGameStatus (JSON) | FlawlessCampaignComplete |
  */
 export const USERS_LIST_CONFIG = {
   listTitle: 'Users',
@@ -41,12 +55,17 @@ export const USERS_LIST_CONFIG = {
     masteryQuestXp: 'MasteryQuestXP',
     game1Level1Xp: 'Game1Level1XP',
     game1Level2Xp: 'Game1Level2XP',
-    game1Level3Xp: 'Game1Level3XP'
+    game1Level3Xp: 'Game1Level3XP',
+    /** Display name TotalPlayedGameCount; SharePoint StaticName is TotalPlayedGame. */
+    totalPlayedGameCount: 'TotalPlayedGame'
   }
 } as const;
 
-/** Scalar Users list columns fetched for Follow the Path (LOBT/Market loaded separately). */
-export function getUsersListSelectFieldsForGame1(): string[] {
+/** Maximum value allowed by the Users list TotalPlayedGameCount column. */
+export const USERS_TOTAL_PLAYED_GAME_COUNT_MAX = 5;
+
+/** Users scalar columns for Follow the Path (excludes LOBT/Market — loaded with $expand). */
+export function getUsersListScalarSelectFieldsForGame1(): string[] {
   const fields = USERS_LIST_CONFIG.fields;
   return [
     fields.id,
@@ -55,12 +74,18 @@ export function getUsersListSelectFieldsForGame1(): string[] {
     fields.totalCoin,
     fields.totalCoinEarned,
     fields.totalXp,
+    fields.totalPlayedGameCount,
     fields.miniQuestXp,
     fields.masteryQuestXp,
     fields.game1Level1Xp,
     fields.game1Level2Xp,
     fields.game1Level3Xp
   ];
+}
+
+/** @deprecated Use getUsersListScalarSelectFieldsForGame1 — Market requires a separate $expand query. */
+export function getUsersListSelectFieldsForGame1(): string[] {
+  return getUsersListScalarSelectFieldsForGame1();
 }
 
 export const GAME1_DATA_LIST_CONFIG = {
@@ -95,6 +120,7 @@ export interface UserProfileRecord {
   game1Level1Xp: number;
   game1Level2Xp: number;
   game1Level3Xp: number;
+  totalPlayedGameCount: number;
 }
 
 export interface FollowThePathProgressData {
@@ -120,6 +146,7 @@ export interface PlayerProgressRecord {
   freeModeUnlocked: boolean;
   heartsRemaining: number;
   heartsDay: string;
+  achievements: GameAchievementData;
 }
 
 export interface PlayerSession {
@@ -146,6 +173,7 @@ export interface GameSessionResult {
   freeModeUnlocked: boolean;
   heartsRemaining: number;
   heartsDay: string;
+  achievementUpdate?: AchievementSessionUpdate;
 }
 
 export function getDailyHeartsDayKey(now: Date = new Date()): string {
@@ -179,6 +207,20 @@ export function resolveDailyHearts(
   return {
     heartsRemaining: remaining,
     heartsDay: today
+  };
+}
+
+/** Apply daily heart rules when the game session opens (always full hearts for today). */
+export function resolveDailyHeartsOnGameLoad(
+  heartsRemaining: number | undefined,
+  heartsDay: string | undefined,
+  now: Date = new Date()
+): { heartsRemaining: number; heartsDay: string } {
+  const { heartsDay: todayKey } = resolveDailyHearts(heartsRemaining, heartsDay, now);
+
+  return {
+    heartsRemaining: MAX_LIVES,
+    heartsDay: todayKey
   };
 }
 
@@ -216,7 +258,8 @@ export function createDefaultUserProfile(email: string, title: string = ''): Use
     masteryQuestXp: 0,
     game1Level1Xp: 0,
     game1Level2Xp: 0,
-    game1Level3Xp: 0
+    game1Level3Xp: 0,
+    totalPlayedGameCount: 0
   };
 }
 
@@ -360,7 +403,8 @@ export function followThePathProgressToRecord(
   game: FollowThePathProgressData,
   totalXp: number,
   totalCoins: number,
-  ids?: { usersListItemId?: number; game1DataListItemId?: number }
+  ids?: { usersListItemId?: number; game1DataListItemId?: number },
+  achievements: GameAchievementData = createDefaultGameAchievementData()
 ): PlayerProgressRecord {
   const earnedQuestionSlots = parseEarnedQuestionSlots(game.earnedQuestionSlots);
   const level = getProgressLevelFromSlots(earnedQuestionSlots);
@@ -376,7 +420,8 @@ export function followThePathProgressToRecord(
     earnedQuestionSlots,
     freeModeUnlocked: game.freeModeUnlocked || earnedQuestionSlots.every((earned) => earned),
     heartsRemaining: game.heartsRemaining,
-    heartsDay: game.heartsDay
+    heartsDay: game.heartsDay,
+    achievements
   };
 }
 
@@ -463,7 +508,8 @@ export function readUserProfileFromListItem(item: Record<string, unknown>): User
     masteryQuestXp: toNumber(item[fields.masteryQuestXp]),
     game1Level1Xp: toNumber(item[fields.game1Level1Xp]),
     game1Level2Xp: toNumber(item[fields.game1Level2Xp]),
-    game1Level3Xp: toNumber(item[fields.game1Level3Xp])
+    game1Level3Xp: toNumber(item[fields.game1Level3Xp]),
+    totalPlayedGameCount: toNumber(item[fields.totalPlayedGameCount])
   };
 
   const rawTotalXp = item[fields.totalXp];
@@ -561,6 +607,18 @@ export function writeUserTotalsToBody(
     [fields.game1Level1Xp]: Math.max(profile.game1Level1Xp, levelXp.game1Level1Xp),
     [fields.game1Level2Xp]: Math.max(profile.game1Level2Xp, levelXp.game1Level2Xp),
     [fields.game1Level3Xp]: Math.max(profile.game1Level3Xp, levelXp.game1Level3Xp)
+  };
+}
+
+/** Increment TotalPlayedGameCount on first Game 1 play (Users list). */
+export function writeUserTotalPlayedGameCountIncrementBody(
+  profile: UserProfileRecord
+): Record<string, number> {
+  const fields = USERS_LIST_CONFIG.fields;
+  const nextCount = Math.min(USERS_TOTAL_PLAYED_GAME_COUNT_MAX, profile.totalPlayedGameCount + 1);
+
+  return {
+    [fields.totalPlayedGameCount]: nextCount
   };
 }
 

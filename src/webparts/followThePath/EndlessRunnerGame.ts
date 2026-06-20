@@ -156,9 +156,12 @@ import type { IPlayerProgressService } from './IPlayerProgressService';
 import {
   createEmptyEarnedQuestionSlots,
   createDefaultPlayerProgress,
+  createDefaultGameAchievementData,
+  applyAchievementSessionUpdate,
   getLevelXpFromSlots,
   getDailyHeartsDayKey,
   resolveDailyHearts,
+  type GameAchievementData,
   type PlayerProgressRecord
 } from './playerProgressTypes';
 import { redirectToHomePage } from './registrationRedirect';
@@ -254,6 +257,8 @@ export class EndlessRunnerGame {
   private _sessionProgressSaved: boolean = false;
   private _sessionProgressSaving: boolean = false;
   private _coinsPersistedScore: number = 0;
+  private _achievementData: GameAchievementData = createDefaultGameAchievementData();
+  private _sessionHeartsLost: number = 0;
   private _disposed: boolean = false;
   private _lastCanvasPressAt: number = 0;
   private _pointerCanvasX: number | undefined;
@@ -816,7 +821,7 @@ export class EndlessRunnerGame {
       if (index < buyCount) {
         this._tryShopPurchase(MAIN_SHOP_MENU, index, () => {
           if (this._dailyHeartsRemaining > 0) {
-            this._closeShop();
+            this._tryStartGame();
           }
         });
         return;
@@ -1003,7 +1008,7 @@ export class EndlessRunnerGame {
           this._lastCanvasPressAt = now;
           this._tryShopPurchase(MAIN_SHOP_MENU, i, () => {
             if (this._dailyHeartsRemaining > 0) {
-              this._closeShop();
+              this._tryStartGame();
             }
           });
           return true;
@@ -1286,7 +1291,9 @@ export class EndlessRunnerGame {
 
   private _goToMainMenu(): void {
     this._gameOverShowsShop = false;
-    this._savePlayerProgress(true);
+    this._savePlayerProgress(true).catch(() => {
+      // Error already logged in _savePlayerProgress.
+    });
     this._state = 'waiting';
     this._movement = 0;
     this._clearTouchMovement();
@@ -1325,6 +1332,7 @@ export class EndlessRunnerGame {
   private _openShop(): void {
     this._state = 'shop';
     this._resetMenuFocus();
+    this._refreshShopCoinBalance();
     this._canvas.focus();
   }
 
@@ -1433,6 +1441,10 @@ export class EndlessRunnerGame {
   }
 
   private _loseLife(): void {
+    if (!this._isFreePlaySession) {
+      this._sessionHeartsLost += 1;
+    }
+
     this._dailyHeartsRemaining = Math.max(0, this._dailyHeartsRemaining - 1);
     this._applyDebugHeartsOverride();
     this._saveDailyHearts();
@@ -1442,14 +1454,37 @@ export class EndlessRunnerGame {
     this._resetMenuFocus();
     this._gameOverShowsShop = true;
     this._state = 'gameover';
-    this._savePlayerProgress(true);
     this._stopAllMusic();
     this._playSfx(this._gameOverSound);
+
+    this._savePlayerProgress(true)
+      .then(() => {
+        this._refreshShopCoinBalance();
+      })
+      .catch(() => {
+        // Error already logged in _savePlayerProgress.
+      });
+  }
+
+  private _refreshShopCoinBalance(): void {
+    if (!this._progressService) {
+      return;
+    }
+
+    this._progressService
+      .refreshSpendableCoins()
+      .then((totalCoin) => {
+        this._totalCoins = totalCoin;
+      })
+      .catch((error: unknown) => {
+        console.error('[FollowThePath] Failed to refresh shop coin balance.', error);
+      });
   }
 
   private _startGame(): void {
     this._gameOverShowsShop = false;
     this._isFreePlaySession = this._freeModeUnlocked;
+    this._sessionHeartsLost = 0;
     this._resetMenuFocus();
     this._score = 0;
     this._playerY = this._playableCenterY();
@@ -1500,6 +1535,7 @@ export class EndlessRunnerGame {
     this._scheduleSpawns(0);
     this._startGameMusic();
     this._canvas.focus();
+    this._saveAchievementsOnGameStart();
 
     if (DEBUG_SHOW_LEVEL_COMPLETE_AT_START) {
       this._score = 100;
@@ -2250,6 +2286,13 @@ export class EndlessRunnerGame {
       if (xpEarned > 0) {
         this._sessionXpByLevel[levelIndex] = xpEarned;
       }
+
+      if (this._currentLevel >= MAX_QUESTION_LEVEL && this._sessionHeartsLost === 0) {
+        this._saveAchievements({
+          markFlawlessCampaignComplete: true,
+          coinsCollected: 0
+        });
+      }
     }
 
     this._state = 'levelComplete';
@@ -2312,7 +2355,9 @@ export class EndlessRunnerGame {
 
     if (this._freeModeUnlocked) {
       this._allQuestionsComplete = true;
-      this._savePlayerProgress(true);
+      this._savePlayerProgress(true).catch(() => {
+        // Error already logged in _savePlayerProgress.
+      });
       this._goToMainMenu();
       return;
     }
@@ -2322,12 +2367,16 @@ export class EndlessRunnerGame {
       if (this._xpEarnedSlots.every((earned) => earned)) {
         this._freeModeUnlocked = true;
       }
-      this._savePlayerProgress(true);
+      this._savePlayerProgress(true).catch(() => {
+        // Error already logged in _savePlayerProgress.
+      });
       this._goToMainMenu();
       return;
     }
 
-    this._savePlayerProgress(false);
+    this._savePlayerProgress(false).catch(() => {
+      // Error already logged in _savePlayerProgress.
+    });
 
     this._currentLevel += 1;
     this._answeredInLevel = [false, false, false, false];
@@ -2829,6 +2878,7 @@ export class EndlessRunnerGame {
   private _drawLevelCompleteRewards(centerX: number, y: number): void {
     const coinsEarned = this._getLevelCoinsEarned();
     const xpEarned = this._getLevelXpEarned();
+    const showXpReward = LEVEL_COMPLETE.showXpReward && xpEarned > 0;
     const coinIconSize = s(LEVEL_COMPLETE.coinIconSize);
     const centerY =
       y + s(LEVEL_COMPLETE.rewardsFontSize) * LEVEL_COMPLETE.rewardsBaselineFactor;
@@ -2849,10 +2899,10 @@ export class EndlessRunnerGame {
         s(4) +
         this._ctx.measureText(coinsText).width;
     }
-    if (LEVEL_COMPLETE.showCoinReward && LEVEL_COMPLETE.showXpReward) {
+    if (LEVEL_COMPLETE.showCoinReward && showXpReward) {
       totalWidth += s(LEVEL_COMPLETE.rewardsGapBetweenCoinAndXp);
     }
-    if (LEVEL_COMPLETE.showXpReward) {
+    if (showXpReward) {
       totalWidth += this._ctx.measureText(xpText).width;
     }
 
@@ -2873,11 +2923,11 @@ export class EndlessRunnerGame {
       x += this._ctx.measureText(coinsText).width;
     }
 
-    if (LEVEL_COMPLETE.showCoinReward && LEVEL_COMPLETE.showXpReward) {
+    if (LEVEL_COMPLETE.showCoinReward && showXpReward) {
       x += s(LEVEL_COMPLETE.rewardsGapBetweenCoinAndXp);
     }
 
-    if (LEVEL_COMPLETE.showXpReward) {
+    if (showXpReward) {
       this._ctx.fillText(xpText, x, centerY);
     }
   }
@@ -3582,8 +3632,8 @@ export class EndlessRunnerGame {
     }
 
     const hearts = resolveDailyHearts(record.heartsRemaining, record.heartsDay);
-    this._dailyHeartsRemaining = hearts.heartsRemaining;
     this._dailyHeartsDay = hearts.heartsDay;
+    this._achievementData = record.achievements || createDefaultGameAchievementData();
     this._applyDebugHeartsOverride();
   }
 
@@ -3608,13 +3658,13 @@ export class EndlessRunnerGame {
       });
   }
 
-  private _savePlayerProgress(endOfSession: boolean): void {
+  private _savePlayerProgress(endOfSession: boolean): Promise<void> {
     if (this._sessionProgressSaving || !this._progressService) {
-      return;
+      return Promise.resolve();
     }
 
     if (endOfSession && this._sessionProgressSaved) {
-      return;
+      return Promise.resolve();
     }
 
     const newHighScore = Math.max(this._bestScore, this._score);
@@ -3628,7 +3678,11 @@ export class EndlessRunnerGame {
 
     this._sessionProgressSaving = true;
 
-    this._progressService
+    const achievementUpdate = {
+      coinsCollected: coinDelta
+    };
+
+    return this._progressService
       .saveAfterGame({
         coinsCollected: coinDelta,
         highScore: newHighScore,
@@ -3638,12 +3692,17 @@ export class EndlessRunnerGame {
         earnedQuestionSlots: [...this._xpEarnedSlots],
         freeModeUnlocked: this._freeModeUnlocked,
         heartsRemaining: this._dailyHeartsRemaining,
-        heartsDay: this._dailyHeartsDay
+        heartsDay: this._dailyHeartsDay,
+        achievementUpdate
       })
       .then(() => {
         this._coinsPersistedScore = this._score;
+        this._totalCoins += coinDelta;
         this._xpEarnedSlotsAtLastSave = this._copyEarnedQuestionSlots(this._xpEarnedSlots);
         this._xpEarnedSlotsXpBaseline = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
+        if (coinDelta > 0) {
+          this._achievementData = applyAchievementSessionUpdate(this._achievementData, achievementUpdate);
+        }
         this._sessionProgressSaving = false;
 
         if (endOfSession) {
@@ -3654,6 +3713,37 @@ export class EndlessRunnerGame {
       .catch((error: unknown) => {
         this._sessionProgressSaving = false;
         console.error('[FollowThePath] Failed to save player progress to SharePoint.', error);
+      });
+  }
+
+  private _saveAchievementsOnGameStart(): void {
+    this._saveAchievements({
+      markFirstPlay: !this._achievementData.firstTimePlay,
+      incrementPlayCount: true,
+      markReplayAfterCompleted: this._freeModeUnlocked,
+      coinsCollected: 0
+    });
+  }
+
+  private _saveAchievements(update: {
+    markFirstPlay?: boolean;
+    incrementPlayCount?: boolean;
+    markReplayAfterCompleted?: boolean;
+    markFlawlessCampaignComplete?: boolean;
+    coinsCollected: number;
+  }): void {
+    if (!this._progressService) {
+      this._achievementData = applyAchievementSessionUpdate(this._achievementData, update);
+      return;
+    }
+
+    this._progressService
+      .saveAchievements(update)
+      .then(() => {
+        this._achievementData = applyAchievementSessionUpdate(this._achievementData, update);
+      })
+      .catch((error: unknown) => {
+        console.error('[FollowThePath] Failed to save achievement progress.', error);
       });
   }
 

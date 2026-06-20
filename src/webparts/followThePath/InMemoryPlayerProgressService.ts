@@ -7,6 +7,10 @@ import {
   getGame1LevelXpTotals,
   computeUserTotalXp,
   resolveDailyHearts,
+  applyAchievementSessionUpdate,
+  mergeGameAchievementsForSave,
+  USERS_TOTAL_PLAYED_GAME_COUNT_MAX,
+  type AchievementSessionUpdate,
   type GameSessionResult,
   type PlayerSession,
   type UserProfileRecord,
@@ -58,11 +62,36 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
     }
 
     const totalXp = this._profile?.totalXp || 0;
+    const sessionAchievements = session.achievementUpdate
+      ? applyAchievementSessionUpdate(this._record.achievements, session.achievementUpdate)
+      : this._record.achievements;
+    const achievements = mergeGameAchievementsForSave(sessionAchievements, this._record.achievements);
 
     this._record = followThePathProgressToRecord(game, totalXp, totalCoin, {
       usersListItemId: this._profile?.listItemId,
       game1DataListItemId: this._record.game1DataListItemId
-    });
+    }, achievements);
+  }
+
+  public async saveAchievements(update: AchievementSessionUpdate): Promise<void> {
+    const serverFirstTimePlay = this._record.achievements.firstTimePlay;
+    const sessionAchievements = applyAchievementSessionUpdate(this._record.achievements, update);
+    const achievements = mergeGameAchievementsForSave(sessionAchievements, this._record.achievements);
+
+    if (update.markFirstPlay && !serverFirstTimePlay && this._profile) {
+      this._profile = {
+        ...this._profile,
+        totalPlayedGameCount: Math.min(
+          this._profile.totalPlayedGameCount + 1,
+          USERS_TOTAL_PLAYED_GAME_COUNT_MAX
+        )
+      };
+    }
+
+    this._record = {
+      ...this._record,
+      achievements
+    };
   }
 
   public async saveDailyHearts(update: DailyHeartsUpdate): Promise<void> {
@@ -100,5 +129,9 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
     };
 
     return newTotalCoin;
+  }
+
+  public async refreshSpendableCoins(): Promise<number> {
+    return this._profile?.totalCoin ?? this._record.totalCoins;
   }
 }

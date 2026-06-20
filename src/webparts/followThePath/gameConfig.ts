@@ -671,8 +671,8 @@ export const MUSIC_VOLUME = 0.35;
 export const SFX_VOLUME = 0.7;
 
 export const QUESTION_INTERVAL_MS = 15000;
-export const SHIELD_SPAWN_MIN_MS = 10000;
-export const SHIELD_SPAWN_MAX_MS = 20000;
+export const SHIELD_SPAWN_MIN_MS = 5000;
+export const SHIELD_SPAWN_MAX_MS = 7000;
 /** Power shield duration after a correct answer or in-game shield pickup. */
 export const POWER_SHIELD_DURATION_MS = 7000;
 /** Blink the shield aura when remaining time is at or below this threshold. */

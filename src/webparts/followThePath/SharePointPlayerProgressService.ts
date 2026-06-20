@@ -18,16 +18,25 @@ import {
   writeUserRegistrationBody,
   writeUserTotalsToBody,
   writeUserCoinSpendBody,
+  writeUserTotalPlayedGameCountIncrementBody,
   writeDailyHeartsToBody,
-  getUsersListSelectFieldsForGame1,
+  getUsersListScalarSelectFieldsForGame1,
   getDailyHeartsDayKey,
   resolveDailyHearts,
   createEmptyEarnedQuestionSlots,
   serializeEarnedQuestionSlots,
   computeUserTotalXp,
   mergeFollowThePathProgressForSave,
+  readGameAchievementsFromListItem,
+  writeGameAchievementsToBody,
+  applyAchievementSessionUpdate,
+  mergeGameAchievementsForSave,
+  getGameAchievementSelectFields,
+  createDefaultGameAchievementData,
   type FollowThePathProgressData,
+  type GameAchievementData,
   type GameSessionResult,
+  type AchievementSessionUpdate,
   type PlayerSession,
   type UserProfileRecord,
   type UserRegistrationInput
@@ -51,6 +60,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
   private readonly _lookupEmail: string;
   private _profile: UserProfileRecord | undefined;
   private _game1DataListItemId: number | undefined;
+  private _achievementData: GameAchievementData = createDefaultGameAchievementData();
 
   public constructor(context: WebPartContext, options: SharePointPlayerProgressServiceOptions = {}) {
     this._context = context;
@@ -87,6 +97,9 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     const followThePath = gameItem
       ? readFollowThePathProgressFromListItem(gameItem)
       : createDefaultFollowThePathProgress();
+    this._achievementData = gameItem
+      ? readGameAchievementsFromListItem(gameItem)
+      : createDefaultGameAchievementData();
 
     this._game1DataListItemId = gameItem
       ? this._toOptionalId(gameItem[GAME1_DATA_LIST_CONFIG.fields.id])
@@ -101,7 +114,8 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
         {
           usersListItemId: this._profile.listItemId,
           game1DataListItemId: this._game1DataListItemId
-        }
+        },
+        this._achievementData
       ),
       needsRegistration: !isUserProfileComplete(this._profile)
     };
@@ -128,7 +142,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       return;
     }
 
-    const serverGameProgress = await this._refreshLatestFromList(email);
+    const serverSnapshot = await this._refreshLatestFromList(email);
 
     if (!this._profile) {
       return;
@@ -137,13 +151,20 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     await this._ensureGame1DataRow(email);
 
     const sessionProgress = buildFollowThePathProgressFromSession(session);
-    const followThePath = mergeFollowThePathProgressForSave(sessionProgress, serverGameProgress);
+    const followThePath = mergeFollowThePathProgressForSave(sessionProgress, serverSnapshot.progress);
+    const sessionAchievements = session.achievementUpdate
+      ? applyAchievementSessionUpdate(this._achievementData, session.achievementUpdate)
+      : this._achievementData;
+    const achievements = mergeGameAchievementsForSave(sessionAchievements, serverSnapshot.achievements);
     const usersBody = writeUserTotalsToBody(
       this._profile,
       followThePath.earnedQuestionSlots,
       session.coinsCollected
     );
-    const gameBody = writeFollowThePathProgressToBody(followThePath);
+    const gameBody = {
+      ...writeFollowThePathProgressToBody(followThePath),
+      ...writeGameAchievementsToBody(achievements)
+    };
 
     if (this._profile.listItemId !== undefined) {
       await this._patchListItem(this._usersListTitle, this._profile.listItemId, usersBody);
@@ -154,7 +175,10 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     } else {
       const created = await this._createListItem(
         this._game1DataListTitle,
-        writeFollowThePathProgressCreateBody(followThePath, email)
+        {
+          ...writeFollowThePathProgressCreateBody(followThePath, email),
+          ...writeGameAchievementsToBody(achievements)
+        }
       );
       this._game1DataListItemId = this._toOptionalId(created[GAME1_DATA_LIST_CONFIG.fields.id]);
     }
@@ -168,6 +192,49 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       game1Level3Xp: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.game1Level3Xp])
     };
     this._profile.totalXp = computeUserTotalXp(this._profile);
+    this._achievementData = achievements;
+  }
+
+  public async saveAchievements(update: AchievementSessionUpdate): Promise<void> {
+    const email = this._getCurrentEmail();
+
+    if (!email || !this._profile) {
+      return;
+    }
+
+    await this._ensureGame1DataRow(email);
+
+    const serverSnapshot = await this._refreshLatestFromList(email);
+    const serverFirstTimePlay = serverSnapshot.achievements?.firstTimePlay === true;
+    const sessionAchievements = applyAchievementSessionUpdate(this._achievementData, update);
+    const achievements = mergeGameAchievementsForSave(sessionAchievements, serverSnapshot.achievements);
+    const gameBody = writeGameAchievementsToBody(achievements);
+
+    if (
+      update.markFirstPlay &&
+      !serverFirstTimePlay &&
+      this._profile.listItemId !== undefined
+    ) {
+      const usersBody = writeUserTotalPlayedGameCountIncrementBody(this._profile);
+      await this._patchListItem(this._usersListTitle, this._profile.listItemId, usersBody);
+      this._profile = {
+        ...this._profile,
+        totalPlayedGameCount: this._toNumber(usersBody[USERS_LIST_CONFIG.fields.totalPlayedGameCount])
+      };
+    }
+
+    if (this._game1DataListItemId !== undefined) {
+      await this._patchListItem(this._game1DataListTitle, this._game1DataListItemId, gameBody);
+    } else {
+      const created = await this._createListItem(this._game1DataListTitle, {
+        Title: email,
+        [GAME1_DATA_LIST_CONFIG.fields.email]: email,
+        ...gameBody
+      });
+      this._game1DataListItemId = this._toOptionalId(created[GAME1_DATA_LIST_CONFIG.fields.id]);
+    }
+
+    this._achievementData = achievements;
   }
 
   public async saveDailyHearts(update: DailyHeartsUpdate): Promise<void> {
@@ -235,15 +302,46 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     return newTotalCoin;
   }
 
-  private async _refreshLatestFromList(
-    email: string
-  ): Promise<FollowThePathProgressData | undefined> {
+  public async refreshSpendableCoins(): Promise<number> {
+    const email = this._getCurrentEmail();
+
+    if (!email) {
+      return this._profile?.totalCoin ?? 0;
+    }
+
+    const userItem = await this._fetchUsersListItem(email);
+
+    if (!userItem) {
+      return this._profile?.totalCoin ?? 0;
+    }
+
+    const latestProfile = readUserProfileFromListItem(userItem);
+
+    if (this._profile) {
+      this._profile = {
+        ...this._profile,
+        totalCoin: latestProfile.totalCoin,
+        totalCoinEarned: latestProfile.totalCoinEarned
+      };
+    }
+
+    return latestProfile.totalCoin;
+  }
+
+  private async _refreshLatestFromList(email: string): Promise<{
+    progress: FollowThePathProgressData | undefined;
+    achievements: GameAchievementData | undefined;
+  }> {
     const userItem = await this._fetchUsersListItem(email);
 
     if (!userItem) {
       this._profile = undefined;
       this._game1DataListItemId = undefined;
-      return undefined;
+      this._achievementData = createDefaultGameAchievementData();
+      return {
+        progress: undefined,
+        achievements: undefined
+      };
     }
 
     this._profile = readUserProfileFromListItem(userItem);
@@ -263,11 +361,20 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
 
     if (!gameItem) {
       this._game1DataListItemId = undefined;
-      return undefined;
+      this._achievementData = createDefaultGameAchievementData();
+      return {
+        progress: undefined,
+        achievements: undefined
+      };
     }
 
     this._game1DataListItemId = this._toOptionalId(gameItem[GAME1_DATA_LIST_CONFIG.fields.id]);
-    return readFollowThePathProgressFromListItem(gameItem);
+    this._achievementData = readGameAchievementsFromListItem(gameItem);
+
+    return {
+      progress: readFollowThePathProgressFromListItem(gameItem),
+      achievements: this._achievementData
+    };
   }
 
   private async _ensureGame1DataRow(email: string): Promise<void> {
@@ -294,13 +401,14 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       [fields.earnedQuestions]: serializeEarnedQuestionSlots(emptySlots),
       [fields.freeModeUnlocked]: false,
       [fields.heartsRemaining]: MAX_LIVES,
-      [fields.heartsDay]: heartsDay
+      [fields.heartsDay]: heartsDay,
+      ...writeGameAchievementsToBody(createDefaultGameAchievementData())
     });
     this._game1DataListItemId = this._toOptionalId(created[fields.id]);
   }
 
   private _getUsersScalarSelectFields(): string[] {
-    return getUsersListSelectFieldsForGame1();
+    return getUsersListScalarSelectFieldsForGame1();
   }
 
   private async _fetchUsersListItem(email: string): Promise<Record<string, unknown> | undefined> {
@@ -328,19 +436,22 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
   }
 
   /**
-   * Market is a lookup column — it cannot appear in $select without $expand.
-   * LOBT may be choice or lookup, so we try a few safe query shapes.
+   * Market is a lookup — it must use $expand. LOBT may be text or lookup depending on the list.
    */
   private async _fetchUsersProfileFields(itemId: number): Promise<Record<string, unknown>> {
     const fields = USERS_LIST_CONFIG.fields;
     const attempts: Array<{ select: string; expand: string }> = [
       {
+        select: `${fields.lobt}/Title,${fields.market}/Title`,
+        expand: `${fields.lobt},${fields.market}`
+      },
+      {
         select: `${fields.lobt},${fields.market}/Title`,
         expand: fields.market
       },
       {
-        select: `${fields.lobt}/Title,${fields.market}/Title`,
-        expand: `${fields.lobt},${fields.market}`
+        select: `${fields.market}/Title`,
+        expand: fields.market
       }
     ];
 
@@ -376,7 +487,8 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       fields.earnedQuestions,
       fields.freeModeUnlocked,
       fields.heartsRemaining,
-      fields.heartsDay
+      fields.heartsDay,
+      ...getGameAchievementSelectFields()
     ];
   }
 

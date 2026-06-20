@@ -1,4 +1,5 @@
 import type {
+  AchievementSessionUpdate,
   GameSessionResult,
   PlayerSession,
   UserProfileRecord,
@@ -26,9 +27,15 @@ export interface IPlayerProgressService {
   /** Persist Users totals and Game1Data after a completed game session. */
   saveAfterGame(session: GameSessionResult): Promise<void>;
 
+  /** Persist Game1Data achievement columns only (e.g. on game start). */
+  saveAchievements(update: AchievementSessionUpdate): Promise<void>;
+
   /** Persist daily hearts immediately after a life is lost. */
   saveDailyHearts(update: DailyHeartsUpdate): Promise<void>;
 
   /** Deduct coins and grant hearts from the shop. Returns the new spendable TotalCoin balance. */
   saveShopPurchase(update: ShopPurchaseUpdate): Promise<number>;
+
+  /** Re-read spendable TotalCoin from persistence before showing the shop. */
+  refreshSpendableCoins(): Promise<number>;
 }
