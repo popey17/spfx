@@ -242,12 +242,11 @@ $font-stack: 'Francois One', sans-serif;
 }
 
 .colLobt {
-  flex: 0 0 38%;
-  width: 38%;
+  flex: 1;
 }
 
 .colLobtTab {
-  flex: 1;
+  width: calc(( 300 / 1220 ) * 100%);
 }
 
 .colPlayerCount {
