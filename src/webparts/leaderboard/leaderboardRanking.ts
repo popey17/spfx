@@ -2,6 +2,7 @@ import type {
   IndividualLeaderboardEntry,
   LeaderboardData,
   LobtLeaderboardEntry,
+  UserLeaderBoardData,
   UsersListRow
 } from './leaderboardTypes';
 
@@ -98,4 +99,59 @@ function buildLobtRankingFromUsers(rows: UsersListRow[], topCount: number): Lobt
   }
 
   return buildLobtRankingFromTotals(totalsByLobt, topCount);
+}
+
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function normalizeLobt(value: string): string {
+  return value.trim();
+}
+
+export function resolveUserLeaderboardStatus(
+  email: string,
+  userLobt: string,
+  individualTopRows: UsersListRow[],
+  lobtTotals: Array<{ lobt: string; xp: number; orderNo?: number; playerCount?: number }>,
+  individualTopLimit: number,
+  lobtTopLimit: number,
+  checkedAt: string = new Date().toISOString().slice(0, 10)
+): UserLeaderBoardData {
+  const normalizedEmail = normalizeEmail(email);
+  let individualRank: number | undefined;
+
+  for (let i = 0; i < individualTopRows.length; i++) {
+    if (normalizeEmail(individualTopRows[i].email) === normalizedEmail) {
+      individualRank = i + 1;
+      break;
+    }
+  }
+
+  const normalizedUserLobt = normalizeLobt(userLobt);
+  const lobtRanked = buildLobtRankingFromTotals(lobtTotals, lobtTotals.length);
+  let lobtRank: number | undefined;
+
+  for (let i = 0; i < lobtRanked.length; i++) {
+    if (normalizeLobt(lobtRanked[i].lobt) === normalizedUserLobt) {
+      lobtRank = lobtRanked[i].rank;
+      break;
+    }
+  }
+
+  const inTop50 = individualRank !== undefined && individualRank <= individualTopLimit;
+  const inTop10 = lobtRank !== undefined && lobtRank <= lobtTopLimit;
+
+  return {
+    individual: {
+      inTop50,
+      ...(inTop50 && individualRank !== undefined ? { rank: individualRank } : {})
+    },
+    lobt: {
+      inTop10,
+      ...(normalizedUserLobt ? { lobt: normalizedUserLobt } : {}),
+      ...(inTop10 && lobtRank !== undefined ? { rank: lobtRank } : {})
+    },
+    checkedAt
+  };
 }

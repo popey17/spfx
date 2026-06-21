@@ -179,6 +179,7 @@ const Leaderboard: React.FC<ILeaderboardProps> = ({
         </div>
 
         <div className={styles.panel__inner}>
+          {showCloseButton && (
             <button
               type="button"
               className={styles.closeButton}
@@ -187,8 +188,7 @@ const Leaderboard: React.FC<ILeaderboardProps> = ({
             >
               <img src={require('../assets/img_closeBtn.png')} alt="Close" />
             </button>
-
-          
+          )}
 
           <div className={styles.tabRow}>
             <button

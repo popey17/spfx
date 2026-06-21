@@ -20,6 +20,7 @@ import {
   writeUserCoinSpendBody,
   writeUserTotalPlayedGameCountIncrementBody,
   writeDailyHeartsToBody,
+  writeLeaderBoardDataToBody,
   getUsersListScalarSelectFieldsForGame1,
   getDailyHeartsDayKey,
   resolveDailyHearts,
@@ -41,6 +42,7 @@ import {
   type UserProfileRecord,
   type UserRegistrationInput
 } from './playerProgressTypes';
+import { SharePointLeaderboardService } from '../leaderboard/SharePointLeaderboardService';
 
 export interface SharePointPlayerProgressServiceOptions {
   usersListTitle?: string;
@@ -104,6 +106,8 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     this._game1DataListItemId = gameItem
       ? this._toOptionalId(gameItem[GAME1_DATA_LIST_CONFIG.fields.id])
       : undefined;
+
+    await this._syncLeaderBoardDataOnLoad();
 
     return {
       profile: this._profile,
@@ -375,6 +379,35 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       progress: readFollowThePathProgressFromListItem(gameItem),
       achievements: this._achievementData
     };
+  }
+
+  private async _syncLeaderBoardDataOnLoad(): Promise<void> {
+    if (!this._profile?.listItemId || !this._profile.email || !isUserProfileComplete(this._profile)) {
+      return;
+    }
+
+    try {
+      const leaderboardService = new SharePointLeaderboardService(this._context, {
+        usersListTitle: this._usersListTitle
+      });
+      const leaderBoardData = await leaderboardService.loadUserLeaderboardStatus(
+        this._profile.email,
+        this._profile.lobt
+      );
+
+      await this._patchListItem(
+        this._usersListTitle,
+        this._profile.listItemId,
+        writeLeaderBoardDataToBody(leaderBoardData)
+      );
+
+      this._profile = {
+        ...this._profile,
+        leaderBoardData
+      };
+    } catch (error) {
+      console.warn('[FollowThePath] Failed to sync LeaderBoardData on load.', error);
+    }
   }
 
   private async _ensureGame1DataRow(email: string): Promise<void> {

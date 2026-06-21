@@ -21,6 +21,24 @@ export interface LeaderboardData {
 
 export type LeaderboardTab = 'individual' | 'lobt';
 
+/** Top-N thresholds checked when the game loads and saved to Users.LeaderBoardData. */
+export const LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT = 50;
+export const LEADERBOARD_USER_LOBT_TOP_LIMIT = 10;
+
+/** JSON persisted on the Users list LeaderBoardData column. */
+export interface UserLeaderBoardData {
+  individual: {
+    inTop50: boolean;
+    rank?: number;
+  };
+  lobt: {
+    inTop10: boolean;
+    rank?: number;
+    lobt?: string;
+  };
+  checkedAt: string;
+}
+
 /** Raw Users list row used while building leaderboard rankings. */
 export interface UsersListRow {
   id: number;

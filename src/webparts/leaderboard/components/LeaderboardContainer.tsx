@@ -14,15 +14,52 @@ type LoadState =
   | { status: 'ready'; data: LeaderboardData }
   | { status: 'error' };
 
+const LEADERBOARD_HASH = '#leaderboard';
+
+function isLeaderboardHashActive(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return window.location.hash.toLowerCase() === LEADERBOARD_HASH;
+}
+
+function clearLeaderboardHash(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const url = `${window.location.pathname}${window.location.search}`;
+  window.history.replaceState(null, document.title, url);
+}
+
 const LeaderboardContainer: React.FC<ILeaderboardContainerProps> = ({ loadLeaderboard }) => {
   const [state, setState] = React.useState<LoadState>({ status: 'loading' });
   const [activeTab, setActiveTab] = React.useState<LeaderboardTab>('individual');
+  const [isOpen, setIsOpen] = React.useState<boolean>(() => isLeaderboardHashActive());
 
   React.useEffect(() => {
     ensureFrancoisOneFont();
   }, []);
 
   React.useEffect(() => {
+    const syncOpenState = (): void => {
+      setIsOpen(isLeaderboardHashActive());
+    };
+
+    syncOpenState();
+    window.addEventListener('hashchange', syncOpenState);
+
+    return () => {
+      window.removeEventListener('hashchange', syncOpenState);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
     let cancelled = false;
 
     setState({ status: 'loading' });
@@ -43,14 +80,25 @@ const LeaderboardContainer: React.FC<ILeaderboardContainerProps> = ({ loadLeader
     return () => {
       cancelled = true;
     };
-  }, [loadLeaderboard, activeTab]);
+  }, [isOpen, loadLeaderboard, activeTab]);
 
   const viewStatus: LeaderboardViewStatus = state.status;
+
+  const handleClose = React.useCallback((): void => {
+    clearLeaderboardHash();
+    setIsOpen(false);
+  }, []);
+
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <Leaderboard
       status={viewStatus}
       data={state.status === 'ready' ? state.data : undefined}
+      showCloseButton={true}
+      onClose={handleClose}
       activeTab={activeTab}
       onTabChange={setActiveTab}
     />

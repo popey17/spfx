@@ -35,6 +35,17 @@ $design-inner-height: 834;
   background: rgba(0, 0, 0, 0.4);
   font-family: $font-stack;
   color: $text;
+  animation: leaderboardFadeIn 220ms ease-out;
+}
+
+@keyframes leaderboardFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .panel {
@@ -198,6 +209,7 @@ $design-inner-height: 834;
 
 .tableStateRowLoading {
   background: transparent !important;
+  backdrop-filter: none !important;
 }
 
 .tableStateMessage {
@@ -247,6 +259,7 @@ $design-inner-height: 834;
 
 .tableBody .tableRow {
   background: rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(13px);
   border-radius: calc((8 / #{$design-width}) * 100cqi);
 }
 

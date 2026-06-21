@@ -8,6 +8,7 @@ import {
 } from './gameConfig';
 import type { AchievementSessionUpdate, GameAchievementData } from './gameAchievementTypes';
 import { createDefaultGameAchievementData } from './gameAchievementTypes';
+import type { UserLeaderBoardData } from '../leaderboard/leaderboardTypes';
 
 export type { AchievementSessionUpdate, DailyGameStatusRecord, GameAchievementData } from './gameAchievementTypes';
 export {
@@ -29,6 +30,7 @@ export {
  * | TotalPlayedGameCount (internal name TotalPlayedGame) |
  * | MiniQuestXP | MasteryQuestXP |
  * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
+ * | LeaderBoardData (JSON — individual top 50 / LOBT top 10 status) |
  *
  * TotalCoin — spendable balance (increases on earn, decreases on spend e.g. shop).
  * TotalCoinEarned — lifetime coins earned; only ever increases.
@@ -57,7 +59,8 @@ export const USERS_LIST_CONFIG = {
     game1Level2Xp: 'Game1Level2XP',
     game1Level3Xp: 'Game1Level3XP',
     /** Display name TotalPlayedGameCount; SharePoint StaticName is TotalPlayedGame. */
-    totalPlayedGameCount: 'TotalPlayedGame'
+    totalPlayedGameCount: 'TotalPlayedGame',
+    leaderBoardData: 'LeaderBoardData'
   }
 } as const;
 
@@ -79,7 +82,8 @@ export function getUsersListScalarSelectFieldsForGame1(): string[] {
     fields.masteryQuestXp,
     fields.game1Level1Xp,
     fields.game1Level2Xp,
-    fields.game1Level3Xp
+    fields.game1Level3Xp,
+    fields.leaderBoardData
   ];
 }
 
@@ -121,6 +125,7 @@ export interface UserProfileRecord {
   game1Level2Xp: number;
   game1Level3Xp: number;
   totalPlayedGameCount: number;
+  leaderBoardData?: UserLeaderBoardData;
 }
 
 export interface FollowThePathProgressData {
@@ -518,7 +523,50 @@ export function readUserProfileFromListItem(item: Record<string, unknown>): User
       ? toNumber(rawTotalXp)
       : computeUserTotalXp(profile);
 
+  profile.leaderBoardData = parseLeaderBoardDataFromJson(
+    String(item[fields.leaderBoardData] || '')
+  );
+
   return profile;
+}
+
+export function parseLeaderBoardDataFromJson(raw: string): UserLeaderBoardData | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Partial<UserLeaderBoardData>;
+    if (!parsed || typeof parsed !== 'object') {
+      return undefined;
+    }
+
+    return {
+      individual: {
+        inTop50: parsed.individual?.inTop50 === true,
+        rank: toOptionalRank(parsed.individual?.rank)
+      },
+      lobt: {
+        inTop10: parsed.lobt?.inTop10 === true,
+        rank: toOptionalRank(parsed.lobt?.rank),
+        lobt: parsed.lobt?.lobt ? String(parsed.lobt.lobt) : undefined
+      },
+      checkedAt: String(parsed.checkedAt || '')
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function serializeLeaderBoardData(data: UserLeaderBoardData): string {
+  return JSON.stringify(data);
+}
+
+export function writeLeaderBoardDataToBody(data: UserLeaderBoardData): Record<string, string> {
+  return {
+    [USERS_LIST_CONFIG.fields.leaderBoardData]: serializeLeaderBoardData(data)
+  };
 }
 
 export function readFollowThePathProgressFromListItem(
@@ -666,4 +714,12 @@ function toOptionalId(value: unknown): number | undefined {
 
   const parsed = parseInt(String(value), 10);
   return isNaN(parsed) ? undefined : parsed;
+}
+
+function toOptionalRank(value: unknown): number | undefined {
+  if (typeof value !== 'number' || isNaN(value) || value <= 0) {
+    return undefined;
+  }
+
+  return value;
 }

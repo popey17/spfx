@@ -4,8 +4,12 @@ import type { WebPartContext } from '@microsoft/sp-webpart-base';
 import { readUserProfileFromListItem, USERS_LIST_CONFIG } from '../followThePath/playerProgressTypes';
 import type { ILeaderboardService } from './ILeaderboardService';
 import { LOBT_LIST_CONFIG, type LobtTypeRow } from './lobtListConfig';
-import { buildIndividualRanking, buildLobtRankingFromTotals } from './leaderboardRanking';
-import type { LeaderboardData, UsersListRow } from './leaderboardTypes';
+import { buildIndividualRanking, buildLobtRankingFromTotals, resolveUserLeaderboardStatus } from './leaderboardRanking';
+import type { LeaderboardData, UserLeaderBoardData, UsersListRow } from './leaderboardTypes';
+import {
+  LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT,
+  LEADERBOARD_USER_LOBT_TOP_LIMIT
+} from './leaderboardTypes';
 
 export interface SharePointLeaderboardServiceOptions {
   /** Users list — player names and XP. Defaults to Users. */
@@ -49,27 +53,37 @@ export class SharePointLeaderboardService implements ILeaderboardService {
 
   public async loadLeaderboard(): Promise<LeaderboardData> {
     const lobtTypes = await this._fetchActiveLobtTypes();
-    console.log(`[Leaderboard] Loaded ${lobtTypes.length} active LOBT type(s) from "${this._lobtListTitle}".`);
     lobtTypes.forEach((lobt, index) => {
-      console.log(`[Leaderboard] LOBT ${index + 1}:`, lobt);
     });
 
     const individualRows = await this._fetchIndividualTopUsers();
-    console.log(`[Leaderboard] Top ${individualRows.length} individual user(s) from "${this._usersListTitle}".`);
     individualRows.forEach((row, index) => {
-      console.log(`[Leaderboard] Individual ${index + 1}:`, row);
     });
 
     const lobtTotals = await this._sumXpByLobtTypes(lobtTypes);
-    console.log(`[Leaderboard] LOBT XP totals from "${this._usersListTitle}".`);
     lobtTotals.forEach((total, index) => {
-      console.log(`[Leaderboard] LOBT total ${index + 1}:`, total);
     });
 
     return {
       individual: buildIndividualRanking(individualRows, this._topCount),
       lobt: buildLobtRankingFromTotals(lobtTotals, this._lobtTopCount)
     };
+  }
+
+  /** Resolve whether the signed-in user is in the individual top 50 and LOBT top 10. */
+  public async loadUserLeaderboardStatus(email: string, userLobt: string): Promise<UserLeaderBoardData> {
+    const lobtTypes = await this._fetchActiveLobtTypes();
+    const individualRows = await this._fetchIndividualTopUsers(LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT);
+    const lobtTotals = await this._sumXpByLobtTypes(lobtTypes);
+
+    return resolveUserLeaderboardStatus(
+      email,
+      userLobt,
+      individualRows,
+      lobtTotals,
+      LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT,
+      LEADERBOARD_USER_LOBT_TOP_LIMIT
+    );
   }
 
   private async _fetchActiveLobtTypes(): Promise<LobtTypeRow[]> {
@@ -101,7 +115,7 @@ export class SharePointLeaderboardService implements ILeaderboardService {
     return rows;
   }
 
-  private async _fetchIndividualTopUsers(): Promise<UsersListRow[]> {
+  private async _fetchIndividualTopUsers(topCount: number = this._topCount): Promise<UsersListRow[]> {
     const fields = USERS_LIST_CONFIG.fields;
     // TotalXP is calculated — SharePoint cannot $orderby it, so fetch and sort client-side.
     const select = [
@@ -126,7 +140,7 @@ export class SharePointLeaderboardService implements ILeaderboardService {
 
     const rows = items.map((item) => this._toUsersListRow(item));
     rows.sort((a, b) => b.totalXp - a.totalXp || a.title.localeCompare(b.title));
-    return rows.slice(0, this._topCount);
+    return rows.slice(0, topCount);
   }
 
   private async _sumXpByLobtTypes(
@@ -143,10 +157,6 @@ export class SharePointLeaderboardService implements ILeaderboardService {
         orderNo: lobtType.orderNo,
         playerCount: summary.userCount
       });
-
-      console.log(
-        `[Leaderboard] LOBT "${lobtType.title}": ${summary.userCount} user(s), ${summary.totalXp} XP.`
-      );
     }
 
     return totals;
