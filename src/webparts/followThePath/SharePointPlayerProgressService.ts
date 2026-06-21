@@ -24,6 +24,7 @@ import {
   getUsersListScalarSelectFieldsForGame1,
   getDailyHeartsDayKey,
   resolveDailyHearts,
+  setServerDate,
   createEmptyEarnedQuestionSlots,
   serializeEarnedQuestionSlots,
   computeUserTotalXp,
@@ -82,7 +83,12 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       };
     }
 
-    const userItem = await this._fetchUsersListItem(email);
+    const serverDatePromise = this._fetchServerTime();
+
+    const [userItem, gameItem] = await Promise.all([
+      this._fetchUsersListItem(email),
+      this._fetchGame1DataListItem(email)
+    ]);
 
     if (!userItem) {
       this._profile = undefined;
@@ -94,8 +100,15 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       };
     }
 
+    try {
+      const serverDate = await serverDatePromise;
+      setServerDate(serverDate);
+      console.log('[FollowThePath] Server time:', serverDate.toISOString());
+    } catch {
+      console.warn('[FollowThePath] Failed to fetch server time, using client time.');
+    }
+
     this._profile = readUserProfileFromListItem(userItem);
-    const gameItem = await this._fetchGame1DataListItem(email);
     const followThePath = gameItem
       ? readFollowThePathProgressFromListItem(gameItem)
       : createDefaultFollowThePathProgress();
@@ -107,7 +120,7 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       ? this._toOptionalId(gameItem[GAME1_DATA_LIST_CONFIG.fields.id])
       : undefined;
 
-    await this._syncLeaderBoardDataOnLoad();
+    this._syncLeaderBoardDataOnLoad().catch(() => { /* fire-and-forget */ });
 
     return {
       profile: this._profile,
@@ -532,6 +545,21 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       this._getGame1DataSelectFields(),
       email
     );
+  }
+
+  private async _fetchServerTime(): Promise<Date> {
+    const url =
+      `${this._context.pageContext.web.absoluteUrl}` +
+      `/_api/web/lists/getbytitle('${this._escapeODataString(this._usersListTitle)}')/items?$top=1&$select=Id`;
+    const response = await this._context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+    const dateHeader = response.headers.get('Date');
+    if (dateHeader) {
+      const date = new Date(dateHeader);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+    throw new Error('Could not determine server time.');
   }
 
   private async _fetchListItemByEmail(

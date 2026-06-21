@@ -64,7 +64,7 @@ export class SharePointLeaderboardService implements ILeaderboardService {
     lobtTotals.forEach((total, index) => {
     });
 
-    this.syncCurrentUserLeaderBoardData();
+    this.syncCurrentUserLeaderBoardData().catch(() => { /* fire-and-forget */ });
 
     return {
       individual: buildIndividualRanking(individualRows, this._topCount),

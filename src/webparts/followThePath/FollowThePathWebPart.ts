@@ -23,6 +23,9 @@ import { DEBUG_SKIP_USER_CHECK } from './gameConfig';
 import type { PlayerSession } from './playerProgressTypes';
 import { createDefaultPlayerProgress } from './playerProgressTypes';
 
+import characterImgUrl from './assets/img_character.png';
+const LOADING_OVERLAY_ID = 'ftp-loading-overlay';
+
 export interface IFollowThePathWebPartProps {
   description: string;
   /** Users list — profile and cross-game totals. Defaults to Users. */
@@ -41,6 +44,7 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
   public render(): void {
     this._disposeGame();
     this.domElement.innerHTML = '';
+    this._showLoadingOverlay();
     const renderGeneration = ++this._renderGeneration;
     const lookupEmail = this._resolveActiveUserEmail();
     const progressService = new SharePointPlayerProgressService(this.context, {
@@ -168,6 +172,52 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
 
   private _getRegistrationEmail(session: PlayerSession): string {
     return session.profile?.email || this._resolveActiveUserEmail();
+  }
+
+  private _showLoadingOverlay(): void {
+    if (!document.getElementById('ftp-loading-style')) {
+      const style = document.createElement('style');
+      style.id = 'ftp-loading-style';
+      style.textContent =
+        '@keyframes ftpFloat{' +
+        '0%,100%{transform:translateY(0) translateX(0)}' +
+        '25%{transform:translateY(-10px) translateX(6px)}' +
+        '50%{transform:translateY(0) translateX(0)}' +
+        '75%{transform:translateY(8px) translateX(-6px)}' +
+        '}';
+      document.head.appendChild(style);
+    }
+
+    const availableWidth = this.domElement.clientWidth || window.innerWidth;
+    const availableHeight = window.innerHeight;
+    const containerAspect = availableWidth / availableHeight;
+    const designAspect = 1920 / 1080;
+
+    let displayWidth: number;
+    let displayHeight: number;
+    if (containerAspect > designAspect) {
+      displayHeight = availableHeight;
+      displayWidth = Math.round(displayHeight * designAspect);
+    } else {
+      displayWidth = availableWidth;
+      displayHeight = Math.round(displayWidth / designAspect);
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = LOADING_OVERLAY_ID;
+    overlay.style.cssText =
+      'position:relative;width:100%;display:flex;justify-content:center;align-items:center;overflow:hidden;background:#0a1628;font-family:Segoe UI,sans-serif;';
+
+    const inner = document.createElement('div');
+    inner.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;';
+    inner.style.width = displayWidth + 'px';
+    inner.style.height = displayHeight + 'px';
+    inner.innerHTML =
+      '<img src="' + characterImgUrl + '" alt="" style="width:200px;animation:ftpFloat 3s ease-in-out infinite" />' +
+      '<div style="margin-top:32px;color:#8899aa;font-size:24px;">Loading\u2026</div>';
+
+    overlay.appendChild(inner);
+    this.domElement.appendChild(overlay);
   }
 
   private _mountGame(

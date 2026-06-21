@@ -181,19 +181,30 @@ export interface GameSessionResult {
   achievementUpdate?: AchievementSessionUpdate;
 }
 
-export function getDailyHeartsDayKey(now: Date = new Date()): string {
+let _serverDate: Date | undefined;
+
+/** Override the date used by heart-reset calculations (e.g. with SharePoint server time). */
+export function setServerDate(date: Date): void {
+  _serverDate = date;
+}
+
+function resolveDate(now?: Date): Date {
+  return now ?? _serverDate ?? new Date();
+}
+
+export function getDailyHeartsDayKey(now?: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: DAILY_HEARTS.timeZone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
-  }).format(now);
+  }).format(resolveDate(now));
 }
 
 export function resolveDailyHearts(
   heartsRemaining: number | undefined,
   heartsDay: string | undefined,
-  now: Date = new Date()
+  now?: Date
 ): { heartsRemaining: number; heartsDay: string } {
   const today = getDailyHeartsDayKey(now);
 
@@ -219,7 +230,7 @@ export function resolveDailyHearts(
 export function resolveDailyHeartsOnGameLoad(
   heartsRemaining: number | undefined,
   heartsDay: string | undefined,
-  now: Date = new Date()
+  now?: Date
 ): { heartsRemaining: number; heartsDay: string } {
   const { heartsDay: todayKey } = resolveDailyHearts(heartsRemaining, heartsDay, now);
 
