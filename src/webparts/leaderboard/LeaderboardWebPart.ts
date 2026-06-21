@@ -33,6 +33,17 @@ export default class LeaderboardWebPart extends BaseClientSideWebPart<ILeaderboa
     ReactDom.render(element, this.domElement);
   }
 
+  protected async onInit(): Promise<void> {
+    const service = new SharePointLeaderboardService(this.context, {
+      usersListTitle: this.properties.usersListTitle,
+      lobtListTitle: this.properties.lobtListTitle
+    });
+    service.syncCurrentUserLeaderBoardData().catch((error) => {
+      console.warn('[Leaderboard] Failed to sync leaderboard data on web part init.', error);
+    });
+    return super.onInit();
+  }
+
   private _createLeaderboardServices(): Array<InMemoryLeaderboardService | SharePointLeaderboardService> {
     const services: Array<InMemoryLeaderboardService | SharePointLeaderboardService> = [
       new SharePointLeaderboardService(this.context, {

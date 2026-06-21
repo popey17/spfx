@@ -1,7 +1,7 @@
 import { SPHttpClient, type SPHttpClientResponse } from '@microsoft/sp-http';
 import type { WebPartContext } from '@microsoft/sp-webpart-base';
 
-import { readUserProfileFromListItem, USERS_LIST_CONFIG } from '../followThePath/playerProgressTypes';
+import { readUserProfileFromListItem, USERS_LIST_CONFIG, writeLeaderBoardDataToBody } from '../followThePath/playerProgressTypes';
 import type { ILeaderboardService } from './ILeaderboardService';
 import { LOBT_LIST_CONFIG, type LobtTypeRow } from './lobtListConfig';
 import { buildIndividualRanking, buildLobtRankingFromTotals, resolveUserLeaderboardStatus } from './leaderboardRanking';
@@ -64,6 +64,8 @@ export class SharePointLeaderboardService implements ILeaderboardService {
     lobtTotals.forEach((total, index) => {
     });
 
+    this.syncCurrentUserLeaderBoardData();
+
     return {
       individual: buildIndividualRanking(individualRows, this._topCount),
       lobt: buildLobtRankingFromTotals(lobtTotals, this._lobtTopCount)
@@ -84,6 +86,58 @@ export class SharePointLeaderboardService implements ILeaderboardService {
       LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT,
       LEADERBOARD_USER_LOBT_TOP_LIMIT
     );
+  }
+
+  public async syncCurrentUserLeaderBoardData(): Promise<void> {
+    const email = this._context.pageContext.user.email;
+    if (!email) {
+      return;
+    }
+
+    try {
+      const fields = USERS_LIST_CONFIG.fields;
+      const select = [fields.id, fields.email, `${fields.lobt}/Title`].join(',');
+
+      const items = await this._fetchListItems({
+        listTitle: this._usersListTitle,
+        select,
+        filter: `${fields.email} eq '${this._escapeODataString(email)}'`,
+        expand: fields.lobt,
+        top: 1
+      });
+
+      if (items.length === 0) {
+        return;
+      }
+
+      const profile = readUserProfileFromListItem(items[0]);
+      if (!profile.listItemId || !profile.email || !profile.lobt) {
+        return;
+      }
+
+      const leaderBoardData = await this.loadUserLeaderboardStatus(profile.email, profile.lobt);
+
+      const url =
+        `${this._context.pageContext.web.absoluteUrl}` +
+        `/_api/web/lists/getbytitle('${this._escapeODataString(this._usersListTitle)}')/items(${profile.listItemId})`;
+
+      const response = await this._context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'Content-type': 'application/json;odata=nometadata',
+          'odata-version': '',
+          'IF-MATCH': '*',
+          'X-HTTP-Method': 'MERGE'
+        },
+        body: JSON.stringify(writeLeaderBoardDataToBody(leaderBoardData))
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to update leaderboard data. HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('[Leaderboard] Failed to sync leaderboard data for current user.', error);
+    }
   }
 
   private async _fetchActiveLobtTypes(): Promise<LobtTypeRow[]> {
