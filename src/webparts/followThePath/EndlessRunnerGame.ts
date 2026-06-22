@@ -867,8 +867,7 @@ export class EndlessRunnerGame {
         if (index < buyCount) {
           this._tryShopPurchase(GAME_OVER_SHOP_MENU, index, () => {
             if (this._dailyHeartsRemaining > 0) {
-              this._gameOverShowsShop = false;
-              this._tryStartGame();
+              this._continueGameAfterLifePurchase();
             }
           });
           return;
@@ -1566,6 +1565,8 @@ export class EndlessRunnerGame {
     this._resetMenuFocus();
     this._gameOverShowsShop = true;
     this._state = 'gameover';
+    this._movement = 0;
+    this._clearTouchMovement();
     this._stopAllMusic();
     this._playSfx(this._gameOverSound);
 
@@ -1576,6 +1577,22 @@ export class EndlessRunnerGame {
       .catch(() => {
         // Error already logged in _savePlayerProgress.
       });
+  }
+
+  /** Resume the current run after buying lives from the in-game shop (no restart). */
+  private _continueGameAfterLifePurchase(): void {
+    if (this._dailyHeartsRemaining <= 0) {
+      return;
+    }
+
+    this._gameOverShowsShop = false;
+    this._resetMenuFocus();
+    this._closeAudioMenu();
+    this._sessionProgressSaved = false;
+    this._movement = 0;
+    this._clearTouchMovement();
+    this._activateGhostMode(performance.now());
+    this._startCountdown();
   }
 
   private _refreshShopCoinBalance(): void {
