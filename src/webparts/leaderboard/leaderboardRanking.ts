@@ -155,3 +155,41 @@ export function resolveUserLeaderboardStatus(
     checkedAt
   };
 }
+
+export interface LeaderBoardDataListUpdate {
+  listItemId: number;
+  data: UserLeaderBoardData;
+}
+
+/** Build LeaderBoardData payloads for each user in the individual top-N set. */
+export function buildLeaderBoardDataForTopIndividualUsers(
+  individualTopRows: UsersListRow[],
+  lobtTotals: Array<{ lobt: string; xp: number; orderNo?: number; playerCount?: number }>,
+  individualTopLimit: number,
+  lobtTopLimit: number,
+  checkedAt: string = new Date().toISOString().slice(0, 10)
+): LeaderBoardDataListUpdate[] {
+  const updates: LeaderBoardDataListUpdate[] = [];
+
+  for (let i = 0; i < individualTopRows.length; i++) {
+    const row = individualTopRows[i];
+    if (!row.id) {
+      continue;
+    }
+
+    updates.push({
+      listItemId: row.id,
+      data: resolveUserLeaderboardStatus(
+        row.email,
+        row.lobt,
+        individualTopRows,
+        lobtTotals,
+        individualTopLimit,
+        lobtTopLimit,
+        checkedAt
+      )
+    });
+  }
+
+  return updates;
+}

@@ -230,6 +230,7 @@ export class EndlessRunnerGame {
   private _gameSpeedMultiplier: number = GAME_SPEED_INITIAL;
   private _currentLevel: number = 1;
   private _activeQuestionInLevelIndex: number = 0;
+  /** Whether each level question slot has been shown and answered (correct or wrong). */
   private _answeredInLevel: boolean[] = [false, false, false, false];
   private _allQuestionsComplete: boolean = false;
   private _obstaclePenalty: number = 0;
@@ -248,7 +249,6 @@ export class EndlessRunnerGame {
   private _xpEarnedSlots: boolean[] = createEmptyEarnedQuestionSlots();
   private _freeModeUnlocked: boolean = false;
   private _isFreePlaySession: boolean = false;
-  private _freeModeDifficulty: number = 1;
   private readonly _progressService: IPlayerProgressService | undefined;
   private readonly _questions: Question[];
   private _sessionXpByLevel: number[] = [0, 0, 0];
@@ -621,7 +621,7 @@ export class EndlessRunnerGame {
 
   private _getMenuButtonCount(): number {
     if (this._state === 'waiting') {
-      return this._freeModeUnlocked ? WELCOME_MENU.freeMode.difficulty.labels.length + 1 : 1;
+      return 1;
     }
 
     if (this._state === 'gameover') {
@@ -653,17 +653,7 @@ export class EndlessRunnerGame {
 
   private _getMenuButtonBounds(index: number): { x: number; y: number; width: number; height: number } | undefined {
     if (this._state === 'waiting') {
-      const difficultyCount = WELCOME_MENU.freeMode.difficulty.labels.length;
-
-      if (this._freeModeUnlocked && index < difficultyCount) {
-        return this._getWelcomeDifficultyButtonBounds(index);
-      }
-
-      if (index === (this._freeModeUnlocked ? difficultyCount : 0)) {
-        return this._getStartButtonBounds();
-      }
-
-      return undefined;
+      return index === 0 ? this._getStartButtonBounds() : undefined;
     }
 
     if (this._state === 'gameover') {
@@ -743,13 +733,6 @@ export class EndlessRunnerGame {
 
   private _activateMenuButton(index: number): void {
     if (this._state === 'waiting') {
-      const difficultyCount = WELCOME_MENU.freeMode.difficulty.labels.length;
-
-      if (this._freeModeUnlocked && index < difficultyCount) {
-        this._freeModeDifficulty = index + 1;
-        return;
-      }
-
       this._tryStartGame();
       return;
     }
@@ -1025,17 +1008,6 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'waiting') {
-      if (this._freeModeUnlocked) {
-        const difficultyButtons = WELCOME_MENU.freeMode.difficulty.labels.length;
-        for (let i = 0; i < difficultyButtons; i++) {
-          if (this._isPointInRect(point.x, point.y, this._getWelcomeDifficultyButtonBounds(i))) {
-            this._lastCanvasPressAt = now;
-            this._freeModeDifficulty = i + 1;
-            return true;
-          }
-        }
-      }
-
       if (this._isPointInRect(point.x, point.y, this._getStartButtonBounds())) {
         this._lastCanvasPressAt = now;
         this._tryStartGame();
@@ -1498,22 +1470,15 @@ export class EndlessRunnerGame {
     this._explosionFlashes = [];
     this._confettiParticles = [];
     this._screenShakeEndsAt = 0;
-    if (this._freeModeUnlocked) {
-      this._currentLevel = this._freeModeDifficulty;
-      this._allQuestionsComplete = false;
-      const speedByLevel = WELCOME_MENU.freeMode.difficulty.speedByLevel;
-      const speedIndex = Math.max(0, Math.min(this._freeModeDifficulty - 1, speedByLevel.length - 1));
-      this._gameSpeedMultiplier = speedByLevel[speedIndex] ?? GAME_SPEED_INITIAL;
-      this._answeredInLevel = [false, false, false, false];
-    } else {
-      // Campaign always starts at Easy. Progress is tracked via earned slots; level picker is free mode only.
+    if (!this._freeModeUnlocked) {
       this._xpEarnedSlots = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
-      this._currentLevel = 1;
-      this._allQuestionsComplete = false;
-      this._gameSpeedMultiplier = GAME_SPEED_INITIAL;
-      this._answeredInLevel = [false, false, false, false];
       this._xpEarnedSlotsXpBaseline = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
     }
+    // Campaign and free mode both start at Easy and advance through all 3 levels.
+    this._currentLevel = 1;
+    this._allQuestionsComplete = false;
+    this._gameSpeedMultiplier = GAME_SPEED_INITIAL;
+    this._answeredInLevel = [false, false, false, false];
     this._activeQuestionInLevelIndex = 0;
     this._obstaclePenalty = 0;
     this._ghostModeEndsAt = 0;
@@ -2249,19 +2214,19 @@ export class EndlessRunnerGame {
   }
 
   private _pickUnansweredQuestionIndex(): number | undefined {
-    const unanswered: number[] = [];
+    const remaining: number[] = [];
 
     for (let i = 0; i < QUESTIONS_PER_LEVEL; i++) {
       if (!this._answeredInLevel[i]) {
-        unanswered.push(i);
+        remaining.push(i);
       }
     }
 
-    if (unanswered.length === 0) {
+    if (remaining.length === 0) {
       return undefined;
     }
 
-    return unanswered[this._randomBetween(0, unanswered.length - 1)];
+    return remaining[this._randomBetween(0, remaining.length - 1)];
   }
 
   private _getCurrentQuestion(): Question | undefined {
@@ -2275,7 +2240,7 @@ export class EndlessRunnerGame {
   }
 
   private _isCurrentLevelComplete(): boolean {
-    return this._answeredInLevel.every((answered) => answered);
+    return this._answeredInLevel.every((attempted) => attempted);
   }
 
   private _showLevelCompleteScreen(): void {
@@ -2353,18 +2318,9 @@ export class EndlessRunnerGame {
       return;
     }
 
-    if (this._freeModeUnlocked) {
-      this._allQuestionsComplete = true;
-      this._savePlayerProgress(true).catch(() => {
-        // Error already logged in _savePlayerProgress.
-      });
-      this._goToMainMenu();
-      return;
-    }
-
     if (this._currentLevel >= MAX_QUESTION_LEVEL) {
       this._allQuestionsComplete = true;
-      if (this._xpEarnedSlots.every((earned) => earned)) {
+      if (!this._isFreePlaySession && this._xpEarnedSlots.every((earned) => earned)) {
         this._freeModeUnlocked = true;
       }
       this._savePlayerProgress(true).catch(() => {
@@ -2476,9 +2432,9 @@ export class EndlessRunnerGame {
     this._selectedAnswerIndex = selectedIndex;
     this._answerFeedback = { index: selectedIndex, correct };
     this._increaseGameSpeedAfterQuestion();
+    this._answeredInLevel[this._activeQuestionInLevelIndex] = true;
 
     if (correct) {
-      this._answeredInLevel[this._activeQuestionInLevelIndex] = true;
       this._awardXpForCorrectAnswer();
       this._obstaclePenalty = 0;
       this._grantPowerShieldOnResume = true;
@@ -2496,7 +2452,7 @@ export class EndlessRunnerGame {
 
       if (!correct && this._dailyHeartsRemaining <= 0) {
         this._handleOutOfHearts();
-      } else if (correct && this._isCurrentLevelComplete()) {
+      } else if (this._isCurrentLevelComplete()) {
         this._showLevelCompleteScreen();
       } else {
         this._startCountdown();
@@ -3772,7 +3728,7 @@ export class EndlessRunnerGame {
       return false;
     }
 
-    return this._answeredInLevel.some((answered) => !answered);
+    return this._answeredInLevel.some((attempted) => !attempted);
   }
 
   private _awardXpForCorrectAnswer(): void {
@@ -3885,22 +3841,14 @@ export class EndlessRunnerGame {
     const content = this._getMenuContentBounds(panel);
     const menuLayout = getWelcomeMenuLayout(this._freeModeUnlocked);
     const buttonWidth = Math.min(menuLayout.startButtonWidth, content.width - WELCOME_MENU.descriptionWidthInset);
-    let y: number;
-
-    if (this._freeModeUnlocked) {
-      const layout = this._getWelcomeContentLayout();
-      const bestScoreBlockHeight = s(WELCOME_MENU.bestScoreFontSize) * 1.2;
-      y =
-        layout.bestScoreY +
-        bestScoreBlockHeight +
-        WELCOME_MENU.freeMode.difficulty.startButtonGapBelowBestScore;
-    } else {
-      y = content.bottom - menuLayout.startButtonHeight - WELCOME_MENU.standard.startButtonBottomOffset;
-    }
+    const startButtonBottomOffset =
+      'startButtonBottomOffset' in menuLayout
+        ? menuLayout.startButtonBottomOffset
+        : WELCOME_MENU.standard.startButtonBottomOffset;
 
     return {
       x: panel.x + (panel.width - buttonWidth) / 2,
-      y,
+      y: content.bottom - menuLayout.startButtonHeight - startButtonBottomOffset,
       width: buttonWidth,
       height: menuLayout.startButtonHeight
     };
@@ -3939,8 +3887,6 @@ export class EndlessRunnerGame {
   private _getWelcomeContentLayout(): {
     centerX: number;
     descriptionBottom: number;
-    difficultyTitleY: number;
-    difficultyButtonsY: number;
     bestScoreY: number;
   } {
     const panel = this._getWelcomePanelBounds();
@@ -3955,80 +3901,14 @@ export class EndlessRunnerGame {
       menuFont(WELCOME_MENU.descriptionFontSize)
     );
     const descriptionBottom = descriptionTop + descriptionHeight;
-
-    if (!this._freeModeUnlocked) {
-      return {
-        centerX,
-        descriptionBottom,
-        difficultyTitleY: 0,
-        difficultyButtonsY: 0,
-        bestScoreY: descriptionBottom + WELCOME_MENU.standard.bestScoreGap
-      };
-    }
-
-    const difficulty = WELCOME_MENU.freeMode.difficulty;
-    const difficultyTitleY = descriptionBottom + difficulty.titleGapBelowDescription;
-    const difficultyButtonsY =
-      difficultyTitleY +
-      s(difficulty.titleFontSize) * 1.2 +
-      difficulty.titleGapBelow;
-    const bestScoreY =
-      difficultyButtonsY + difficulty.buttonHeight + difficulty.gapBelowButtons;
+    const bestScoreGap =
+      'bestScoreGap' in menuLayout ? menuLayout.bestScoreGap : WELCOME_MENU.standard.bestScoreGap;
 
     return {
       centerX,
       descriptionBottom,
-      difficultyTitleY,
-      difficultyButtonsY,
-      bestScoreY
+      bestScoreY: descriptionBottom + bestScoreGap
     };
-  }
-
-  private _getWelcomeDifficultyButtonBounds(index: number): { x: number; y: number; width: number; height: number } {
-    const layout = this._getWelcomeContentLayout();
-    const difficulty = WELCOME_MENU.freeMode.difficulty;
-    const buttonCount = difficulty.labels.length;
-    const totalWidth = difficulty.buttonWidth * buttonCount + difficulty.buttonGap * (buttonCount - 1);
-    const startX = layout.centerX - totalWidth / 2;
-
-    return {
-      x: startX + index * (difficulty.buttonWidth + difficulty.buttonGap),
-      y: layout.difficultyButtonsY,
-      width: difficulty.buttonWidth,
-      height: difficulty.buttonHeight
-    };
-  }
-
-  private _drawWelcomeDifficultyButton(
-    bounds: { x: number; y: number; width: number; height: number },
-    label: string,
-    selected: boolean,
-    timestamp: number,
-    interaction: { focused: boolean; hovered: boolean; highlighted: boolean }
-  ): void {
-    this._drawWithButtonHoverTransform(bounds, timestamp, interaction.highlighted, (drawBounds) => {
-      if (selected) {
-        this._ctx.fillStyle = WELCOME_ACCENT;
-        this._ctx.fillRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
-      } else {
-        this._ctx.fillStyle = 'rgba(18, 22, 30, 0.95)';
-        this._ctx.fillRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
-        this._ctx.strokeStyle = interaction.highlighted ? WELCOME_ACCENT : 'rgba(255, 255, 255, 0.55)';
-        this._ctx.lineWidth = s(interaction.highlighted ? 2 : 1);
-        this._ctx.strokeRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
-      }
-
-      if (interaction.focused && !selected) {
-        this._ctx.fillStyle = `rgba(245, 124, 0, ${MENU_BUTTON_HOVER.focusOverlayAlpha})`;
-        this._ctx.fillRect(drawBounds.x, drawBounds.y, drawBounds.width, drawBounds.height);
-      }
-
-      this._ctx.font = menuFont(WELCOME_MENU.freeMode.difficulty.buttonFontSize);
-      this._ctx.fillStyle = '#FFFFFF';
-      this._ctx.textAlign = 'center';
-      this._ctx.textBaseline = 'middle';
-      this._ctx.fillText(label, drawBounds.x + drawBounds.width / 2, drawBounds.y + drawBounds.height / 2);
-    });
   }
 
   private _getGameOverButtonBounds(index: number): { x: number; y: number; width: number; height: number } {
@@ -4874,36 +4754,18 @@ export class EndlessRunnerGame {
       'center'
     );
 
-    if (this._freeModeUnlocked) {
-      const difficulty = WELCOME_MENU.freeMode.difficulty;
-      this._ctx.font = menuFont(difficulty.titleFontSize);
-      this._ctx.fillStyle = '#FFFFFF';
-      this._ctx.fillText(difficulty.title, layout.centerX, layout.difficultyTitleY);
-
-      for (let i = 0; i < difficulty.labels.length; i++) {
-        this._drawWelcomeDifficultyButton(
-          this._getWelcomeDifficultyButtonBounds(i),
-          difficulty.labels[i],
-          this._freeModeDifficulty === i + 1,
-          timestamp,
-          this._getMenuButtonInteraction(i)
-        );
-      }
-    }
-
     this._ctx.font = menuFont(WELCOME_MENU.bestScoreFontSize);
     this._ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
     this._ctx.textAlign = 'center';
     this._ctx.fillText('Best score: ' + this._bestScore, layout.centerX, layout.bestScoreY);
 
-    const startButtonIndex = this._freeModeUnlocked ? WELCOME_MENU.freeMode.difficulty.labels.length : 0;
     const button = this._getStartButtonBounds();
     this._drawMenuButton(
       button,
       'START GAME',
       WELCOME_MENU.startButtonFontSize,
       timestamp,
-      this._getMenuButtonInteraction(startButtonIndex)
+      this._getMenuButtonInteraction(0)
     );
 
     this._drawArrowKeyHints(layout.centerX, content.bottom - menuLayout.arrowHintsBottomOffset, {

@@ -181,25 +181,13 @@ export const WELCOME_MENU = {
 
   /** Replay screen after all questions are complete. */
   freeMode: {
-    titleOffsetY: 0,
-    descriptionOffsetY: 100,
-    startButtonWidth: 300,
-    startButtonHeight: 80,
-    arrowHintsBottomOffset: 110,
-    difficulty: {
-      title: 'CHOOSE YOUR DIFFICULTY',
-      titleFontSize: 14,
-      titleGapBelowDescription: 60,
-      titleGapBelow: 20,
-      buttonWidth: 210,
-      buttonHeight: 52,
-      buttonGap: 14,
-      buttonFontSize: 13,
-      labels: ['EASY', 'INTERMEDIATE', 'ADVANCED'] as const,
-      gapBelowButtons: 56,
-      startButtonGapBelowBestScore: 14,
-      speedByLevel: [1, 1.35, 1.75] as const
-    }
+    titleOffsetY: 80,
+    descriptionOffsetY: 200,
+    bestScoreGap: 60,
+    startButtonWidth: 350,
+    startButtonHeight: 100,
+    startButtonBottomOffset: 200,
+    arrowHintsBottomOffset: 160
   }
 };
 
@@ -664,7 +652,7 @@ export const SHOW_OBSTACLE_HITBOXES = false;
 /** Legacy per-question XP — no longer used for rewards but kept for compatibility. */
 export const XP_PER_QUESTION = 0;
 /** XP granted once per level when all questions in that level are completed. */
-export const LEVEL_XP_REWARDS = [100, 150, 200] as const;
+export const LEVEL_XP_REWARDS = [10, 10, 10] as const;
 export const WELCOME_ACCENT = '#F57C00';
 export const WELCOME_PANEL_FILL = 'rgba(28, 32, 42, 0.9)';
 export const MUSIC_VOLUME = 0.35;

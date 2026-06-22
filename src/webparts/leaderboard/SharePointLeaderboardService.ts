@@ -1,11 +1,15 @@
 import { SPHttpClient, type SPHttpClientResponse } from '@microsoft/sp-http';
 import type { WebPartContext } from '@microsoft/sp-webpart-base';
 
-import { readUserProfileFromListItem, USERS_LIST_CONFIG } from '../followThePath/playerProgressTypes';
+import { readUserProfileFromListItem, USERS_LIST_CONFIG, writeLeaderBoardDataToBody } from '../followThePath/playerProgressTypes';
 import type { ILeaderboardService } from './ILeaderboardService';
 import { LOBT_LIST_CONFIG, type LobtTypeRow } from './lobtListConfig';
-import { buildIndividualRanking, buildLobtRankingFromTotals, resolveUserLeaderboardStatus } from './leaderboardRanking';
-import type { LeaderboardData, UserLeaderBoardData, UsersListRow } from './leaderboardTypes';
+import {
+  buildIndividualRanking,
+  buildLeaderBoardDataForTopIndividualUsers,
+  buildLobtRankingFromTotals
+} from './leaderboardRanking';
+import type { LeaderboardData, UsersListRow } from './leaderboardTypes';
 import {
   LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT,
   LEADERBOARD_USER_LOBT_TOP_LIMIT
@@ -53,15 +57,11 @@ export class SharePointLeaderboardService implements ILeaderboardService {
 
   public async loadLeaderboard(): Promise<LeaderboardData> {
     const lobtTypes = await this._fetchActiveLobtTypes();
-    lobtTypes.forEach((lobt, index) => {
-    });
-
-    const individualRows = await this._fetchIndividualTopUsers();
-    individualRows.forEach((row, index) => {
-    });
-
+    const individualRows = await this._fetchIndividualTopUsers(LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT);
     const lobtTotals = await this._sumXpByLobtTypes(lobtTypes);
-    lobtTotals.forEach((total, index) => {
+
+    this._syncLeaderBoardDataForTopUsers(individualRows, lobtTotals).catch((error: unknown) => {
+      console.warn('[Leaderboard] Background LeaderBoardData sync failed.', error);
     });
 
     return {
@@ -70,20 +70,52 @@ export class SharePointLeaderboardService implements ILeaderboardService {
     };
   }
 
-  /** Resolve whether the signed-in user is in the individual top 50 and LOBT top 10. */
-  public async loadUserLeaderboardStatus(email: string, userLobt: string): Promise<UserLeaderBoardData> {
-    const lobtTypes = await this._fetchActiveLobtTypes();
-    const individualRows = await this._fetchIndividualTopUsers(LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT);
-    const lobtTotals = await this._sumXpByLobtTypes(lobtTypes);
+  private async _syncLeaderBoardDataForTopUsers(
+    individualTopRows: UsersListRow[],
+    lobtTotals: Array<{ lobt: string; xp: number; orderNo: number; playerCount: number }>
+  ): Promise<void> {
+    try {
+      const updates = buildLeaderBoardDataForTopIndividualUsers(
+        individualTopRows,
+        lobtTotals,
+        LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT,
+        LEADERBOARD_USER_LOBT_TOP_LIMIT
+      );
 
-    return resolveUserLeaderboardStatus(
-      email,
-      userLobt,
-      individualRows,
-      lobtTotals,
-      LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT,
-      LEADERBOARD_USER_LOBT_TOP_LIMIT
-    );
+      await Promise.all(
+        updates.map(async ({ listItemId, data }) => {
+          try {
+            await this._patchListItem(listItemId, writeLeaderBoardDataToBody(data));
+          } catch (error) {
+            console.warn('[Leaderboard] Failed to sync LeaderBoardData for user.', { listItemId }, error);
+          }
+        })
+      );
+    } catch (error) {
+      console.warn('[Leaderboard] Failed to sync LeaderBoardData for top users.', error);
+    }
+  }
+
+  private async _patchListItem(itemId: number, body: Record<string, string>): Promise<void> {
+    const listTitle = this._escapeODataString(this._usersListTitle);
+    const url =
+      `${this._context.pageContext.web.absoluteUrl}` +
+      `/_api/web/lists/getbytitle('${listTitle}')/items(${itemId})`;
+
+    const response = await this._context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+      headers: {
+        Accept: 'application/json;odata=nometadata',
+        'Content-type': 'application/json;odata=nometadata',
+        'odata-version': '',
+        'IF-MATCH': '*',
+        'X-HTTP-Method': 'MERGE'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      throw new Error(await this._readSharePointError(response, `Failed to update list item in "${this._usersListTitle}".`));
+    }
   }
 
   private async _fetchActiveLobtTypes(): Promise<LobtTypeRow[]> {

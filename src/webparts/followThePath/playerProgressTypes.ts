@@ -30,7 +30,7 @@ export {
  * | TotalPlayedGameCount (internal name TotalPlayedGame) |
  * | MiniQuestXP | MasteryQuestXP |
  * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
- * | LeaderBoardData (JSON — individual top 50 / LOBT top 10 status) |
+ * | LeaderBoardData (JSON — individual top 50 / LOBT top 10 status; synced on leaderboard open) |
  *
  * TotalCoin — spendable balance (increases on earn, decreases on spend e.g. shop).
  * TotalCoinEarned — lifetime coins earned; only ever increases.

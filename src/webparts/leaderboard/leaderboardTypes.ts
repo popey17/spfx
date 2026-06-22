@@ -21,7 +21,7 @@ export interface LeaderboardData {
 
 export type LeaderboardTab = 'individual' | 'lobt';
 
-/** Top-N thresholds checked when the game loads and saved to Users.LeaderBoardData. */
+/** Top-N thresholds synced to Users.LeaderBoardData when the leaderboard popup opens. */
 export const LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT = 50;
 export const LEADERBOARD_USER_LOBT_TOP_LIMIT = 10;
 
