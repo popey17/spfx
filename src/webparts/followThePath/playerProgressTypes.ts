@@ -31,6 +31,7 @@ export {
  * | MiniQuestXP | MasteryQuestXP |
  * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
  * | LeaderBoardData (JSON — individual top 50 / LOBT top 10 status; synced on leaderboard open) |
+ * | GameProgress (JSON — per-game stats keyed by game id, e.g. followThePath.played) |
  *
  * TotalCoin — spendable balance (increases on earn, decreases on spend e.g. shop).
  * TotalCoinEarned — lifetime coins earned; only ever increases.
@@ -60,7 +61,9 @@ export const USERS_LIST_CONFIG = {
     game1Level3Xp: 'Game1Level3XP',
     /** Display name TotalPlayedGameCount; SharePoint StaticName is TotalPlayedGame. */
     totalPlayedGameCount: 'TotalPlayedGame',
-    leaderBoardData: 'LeaderBoardData'
+    leaderBoardData: 'LeaderBoardData',
+    /** Cross-game JSON blob (followThePath, complianceTower, etc.). Display name GameProgress. */
+    gameProgress: 'GameProgress'
   }
 } as const;
 
@@ -83,7 +86,8 @@ export function getUsersListScalarSelectFieldsForGame1(): string[] {
     fields.game1Level1Xp,
     fields.game1Level2Xp,
     fields.game1Level3Xp,
-    fields.leaderBoardData
+    fields.leaderBoardData,
+    fields.gameProgress
   ];
 }
 
@@ -126,6 +130,8 @@ export interface UserProfileRecord {
   game1Level3Xp: number;
   totalPlayedGameCount: number;
   leaderBoardData?: UserLeaderBoardData;
+  /** Raw Users list GameProgress JSON (preserved verbatim except followThePath updates). */
+  gameProgressJson?: string;
 }
 
 export interface FollowThePathProgressData {
@@ -527,6 +533,9 @@ export function readUserProfileFromListItem(item: Record<string, unknown>): User
     String(item[fields.leaderBoardData] || '')
   );
 
+  const rawGameProgress = String(item[fields.gameProgress] || '').trim();
+  profile.gameProgressJson = rawGameProgress || undefined;
+
   return profile;
 }
 
@@ -667,6 +676,52 @@ export function writeUserTotalPlayedGameCountIncrementBody(
 
   return {
     [fields.totalPlayedGameCount]: nextCount
+  };
+}
+
+export function parseUserGameDataJson(raw: string | undefined): Record<string, unknown> {
+  if (!raw || !raw.trim()) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return { ...(parsed as Record<string, unknown>) };
+  } catch {
+    return {};
+  }
+}
+
+/** Increment followThePath.played in Users list GameProgress without touching other games. */
+export function incrementFollowThePathPlayedInUserGameData(raw: string | undefined): string {
+  const data = parseUserGameDataJson(raw);
+  const existingFollowThePath =
+    data.followThePath &&
+    typeof data.followThePath === 'object' &&
+    !Array.isArray(data.followThePath)
+      ? { ...(data.followThePath as Record<string, unknown>) }
+      : {};
+  const played = Math.max(0, toNumber(existingFollowThePath.played)) + 1;
+
+  return JSON.stringify({
+    ...data,
+    followThePath: {
+      ...existingFollowThePath,
+      played
+    }
+  });
+}
+
+export function writeUserFollowThePathPlayedIncrementBody(
+  rawGameProgressJson: string | undefined
+): Record<string, string> {
+  return {
+    [USERS_LIST_CONFIG.fields.gameProgress]: incrementFollowThePathPlayedInUserGameData(rawGameProgressJson)
   };
 }
 

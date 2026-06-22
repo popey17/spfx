@@ -9,6 +9,7 @@ import {
   resolveDailyHearts,
   applyAchievementSessionUpdate,
   mergeGameAchievementsForSave,
+  incrementFollowThePathPlayedInUserGameData,
   USERS_TOTAL_PLAYED_GAME_COUNT_MAX,
   type AchievementSessionUpdate,
   type GameSessionResult,
@@ -85,6 +86,13 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
           this._profile.totalPlayedGameCount + 1,
           USERS_TOTAL_PLAYED_GAME_COUNT_MAX
         )
+      };
+    }
+
+    if (update.incrementPlayCount && this._profile) {
+      this._profile = {
+        ...this._profile,
+        gameProgressJson: incrementFollowThePathPlayedInUserGameData(this._profile.gameProgressJson)
       };
     }
 
