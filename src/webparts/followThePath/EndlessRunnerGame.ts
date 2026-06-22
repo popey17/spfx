@@ -47,6 +47,7 @@ import {
   DESIGN_WIDTH,
   DESIGN_HEIGHT,
   DESIGN_ASPECT,
+  SCREEN_BACKGROUND,
   s,
   menuFont,
   MENU_PANEL,
@@ -181,6 +182,9 @@ export interface EndlessRunnerGameOptions {
 
 export class EndlessRunnerGame {
   private readonly _container: HTMLDivElement;
+  private readonly _backgroundLayer: HTMLDivElement;
+  private readonly _backgroundImage: HTMLImageElement;
+  private readonly _menuBackdropLayer: HTMLDivElement;
   private readonly _viewport: HTMLDivElement;
   private readonly _canvas: HTMLCanvasElement;
   private readonly _ctx: CanvasRenderingContext2D;
@@ -229,7 +233,7 @@ export class EndlessRunnerGame {
   private _questionTimerMs: number = 0;
   private _shieldTimerMs: number = 0;
   private _nextShieldSpawnDelayMs: number = SHIELD_SPAWN_MIN_MS;
-  private _powerShieldEndsAt: number = 0;
+  private _powerShieldRemainingMs: number = 0;
   private _grantPowerShieldOnResume: boolean = false;
   private _spawnClockMs: number = 0;
   private _gameSpeedMultiplier: number = GAME_SPEED_INITIAL;
@@ -242,6 +246,7 @@ export class EndlessRunnerGame {
   private _selectedAnswerIndex: number = 0;
   private readonly _fullscreenLayout: boolean;
   private _assets: LoadedAssets | undefined;
+  private _secondaryMenuOverlayScratch: HTMLCanvasElement | undefined;
   private readonly _menuMusic: HTMLAudioElement;
   private readonly _gameMusic: HTMLAudioElement;
   private readonly _coinSound: HTMLAudioElement;
@@ -249,7 +254,6 @@ export class EndlessRunnerGame {
   private readonly _alarmSound: HTMLAudioElement;
   private readonly _correctSound: HTMLAudioElement;
   private readonly _gameOverSound: HTMLAudioElement;
-  private _backdropCanvas: HTMLCanvasElement | undefined;
   private _bestScore: number = 0;
   private _xpEarnedSlots: boolean[] = createEmptyEarnedQuestionSlots();
   private _freeModeUnlocked: boolean = false;
@@ -329,25 +333,61 @@ export class EndlessRunnerGame {
 
     this._container = document.createElement('div');
     this._container.style.cssText = this._fullscreenLayout
-      ? 'position:fixed;inset:0;width:100dvw;height:100dvh;max-width:100vw;max-height:100vh;display:flex;justify-content:center;align-items:center;overflow:hidden;background:#0a1628;z-index:9999;'
-      : 'position:relative;width:100%;min-height:100dvh;display:flex;justify-content:center;align-items:center;overflow:hidden;background:#0a1628;';
+      ? 'position:fixed;inset:0;width:100dvw;height:100dvh;max-width:100vw;max-height:100vh;display:flex;justify-content:center;align-items:center;overflow:hidden;background:' +
+        SCREEN_BACKGROUND.fallbackColor +
+        ';z-index:9999;'
+      : 'position:relative;width:100%;min-height:100dvh;display:flex;justify-content:center;align-items:center;overflow:hidden;background:' +
+        SCREEN_BACKGROUND.fallbackColor +
+        ';';
+
+    this._backgroundLayer = document.createElement('div');
+    this._backgroundLayer.style.cssText =
+      'position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:' +
+      SCREEN_BACKGROUND.fallbackColor +
+      ';';
+
+    this._backgroundImage = document.createElement('img');
+    this._backgroundImage.alt = '';
+    this._backgroundImage.draggable = false;
+    this._backgroundImage.style.cssText =
+      'display:block;width:100%;height:100%;object-fit:' +
+      SCREEN_BACKGROUND.objectFit +
+      ';object-position:' +
+      SCREEN_BACKGROUND.objectPosition +
+      ';';
+    this._backgroundLayer.appendChild(this._backgroundImage);
+
+    this._menuBackdropLayer = document.createElement('div');
+    this._menuBackdropLayer.style.cssText =
+      'position:absolute;inset:0;z-index:1;pointer-events:none;opacity:0;transition:opacity 180ms ease;' +
+      'backdrop-filter:blur(' +
+      MENU_BACKDROP.blurPx +
+      'px);-webkit-backdrop-filter:blur(' +
+      MENU_BACKDROP.blurPx +
+      'px);background:' +
+      MENU_BACKDROP.overlayColor +
+      ';';
 
     this._viewport = document.createElement('div');
-    this._viewport.style.cssText = 'position:relative;overflow:hidden;flex-shrink:0;';
+    this._viewport.style.cssText =
+      'position:relative;z-index:2;overflow:hidden;flex-shrink:0;background:transparent;outline:none;border:none;';
 
     this._canvas = document.createElement('canvas');
-    this._canvas.style.cssText = 'display:block;width:100%;height:100%;cursor:default;touch-action:none;';
+    this._canvas.style.cssText =
+      'display:block;width:100%;height:100%;cursor:default;touch-action:none;background:transparent;outline:none;border:none;';
     this._canvas.setAttribute('tabindex', '0');
     this._canvas.setAttribute('role', 'application');
     this._canvas.setAttribute('aria-label', 'Follow the Path endless runner game');
 
-    const context = this._canvas.getContext('2d');
+    const context = this._canvas.getContext('2d', { alpha: true });
     if (!context) {
       throw new Error('Unable to acquire 2D canvas context.');
     }
     this._ctx = context;
 
     this._viewport.appendChild(this._canvas);
+    this._container.appendChild(this._backgroundLayer);
+    this._container.appendChild(this._menuBackdropLayer);
     this._container.appendChild(this._viewport);
     target.innerHTML = '';
     target.appendChild(this._container);
@@ -441,8 +481,15 @@ export class EndlessRunnerGame {
   }
 
   private _loadAssets(): Promise<void> {
+    this._loadImage(bgUrl)
+      .then((background) => {
+        this._backgroundImage.src = background.src;
+      })
+      .catch((error: unknown) => {
+        console.warn('[FollowThePath] Failed to load screen background.', error);
+      });
+
     return Promise.all([
-      this._loadImage(bgUrl),
       this._loadImage(characterUrl),
       this._loadImage(coinUrl),
       this._loadImage(coinSimpleUrl),
@@ -463,9 +510,8 @@ export class EndlessRunnerGame {
       this._loadImage(muteBtnUrl),
       this._loadImage(soundBtnUrl),
       Promise.all(obstacleUrls.map((url) => this._loadImage(url)))
-    ]).then(([background, character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, heart, heartLost, storeBackground, levelPassRaccoon, backButton, muteButton, soundButton, obstacles]) => {
+    ]).then(([character, coin, coinSimple, pizza, shield, menuBackground, speechBubble, buttonBackground, buttonCorner, pauseButton, arrowUp, star, heart, heartLost, storeBackground, levelPassRaccoon, backButton, muteButton, soundButton, obstacles]) => {
       this._assets = {
-        background,
         character,
         coin,
         coinSimple,
@@ -549,7 +595,7 @@ export class EndlessRunnerGame {
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
     document.body.style.margin = '0';
-    document.body.style.background = '#0a1628';
+    document.body.style.background = SCREEN_BACKGROUND.fallbackColor;
 
     const hideSelectors = [
       '#spSiteHeader',
@@ -854,6 +900,7 @@ export class EndlessRunnerGame {
       if (index === 0) {
         this._resumeFromPause();
       } else if (index === 1) {
+        this._closeAudioMenu();
         this._showPauseMainMenuConfirm = true;
         this._resetMenuFocus();
       }
@@ -1156,6 +1203,7 @@ export class EndlessRunnerGame {
 
       if (this._isPointInRect(point.x, point.y, this._getPauseMenuButtonBounds(1))) {
         this._lastCanvasPressAt = now;
+        this._closeAudioMenu();
         this._showPauseMainMenuConfirm = true;
         return true;
       }
@@ -1358,7 +1406,7 @@ export class EndlessRunnerGame {
     this._clearTouchMovement();
     this._showPauseMainMenuConfirm = false;
     this._resetCheats();
-    this._powerShieldEndsAt = 0;
+    this._powerShieldRemainingMs = 0;
     this._grantPowerShieldOnResume = false;
     this._resetMenuFocus();
     this._obstacles = [];
@@ -1570,7 +1618,7 @@ export class EndlessRunnerGame {
     this._activeQuestionInLevelIndex = 0;
     this._obstaclePenalty = 0;
     this._ghostModeEndsAt = 0;
-    this._powerShieldEndsAt = 0;
+    this._powerShieldRemainingMs = 0;
     this._grantPowerShieldOnResume = false;
     this._questionTimerMs = 0;
     this._shieldTimerMs = 0;
@@ -1672,6 +1720,7 @@ export class EndlessRunnerGame {
     this._cleanupEntities();
     this._updateQuestionTimer(delta);
     this._updateShieldSpawns(delta);
+    this._updatePowerShieldTimer(delta);
     this._checkCollisions(timestamp);
   }
 
@@ -1729,12 +1778,20 @@ export class EndlessRunnerGame {
     return true;
   }
 
-  private _isPowerShieldActive(timestamp: number): boolean {
-    return this._powerShieldEndsAt > timestamp;
+  private _updatePowerShieldTimer(delta: number): void {
+    if (this._powerShieldRemainingMs <= 0) {
+      return;
+    }
+
+    this._powerShieldRemainingMs = Math.max(0, this._powerShieldRemainingMs - delta);
   }
 
-  private _grantPowerShield(timestamp: number, playSound: boolean = true): void {
-    this._powerShieldEndsAt = timestamp + POWER_SHIELD_DURATION_MS;
+  private _isPowerShieldActive(): boolean {
+    return this._powerShieldRemainingMs > 0;
+  }
+
+  private _grantPowerShield(playSound: boolean = true): void {
+    this._powerShieldRemainingMs = POWER_SHIELD_DURATION_MS;
 
     if (playSound) {
       this._playSfx(this._correctSound);
@@ -2149,7 +2206,7 @@ export class EndlessRunnerGame {
   private _checkCollisions(timestamp: number): void {
     if (DEBUG_AUTO_COLLECT_SHIELDS && this._shields.length > 0) {
       this._shields.splice(0, this._shields.length);
-      this._grantPowerShield(timestamp);
+      this._grantPowerShield();
       return;
     }
 
@@ -2188,8 +2245,8 @@ export class EndlessRunnerGame {
           return;
         }
 
-        if (this._isPowerShieldActive(timestamp)) {
-          this._powerShieldEndsAt = 0;
+        if (this._isPowerShieldActive()) {
+          this._powerShieldRemainingMs = 0;
           this._playSfx(this._correctSound);
           return;
         }
@@ -2234,7 +2291,7 @@ export class EndlessRunnerGame {
 
       if (dx * dx + dy * dy < hitRadius * hitRadius) {
         this._shields.splice(k, 1);
-        this._grantPowerShield(timestamp);
+        this._grantPowerShield();
         return;
       }
     }
@@ -2428,7 +2485,7 @@ export class EndlessRunnerGame {
     this._obstacles = [];
     this._coins = [];
     this._shields = [];
-    this._powerShieldEndsAt = 0;
+    this._powerShieldRemainingMs = 0;
     this._grantPowerShieldOnResume = false;
     this._questionTimerMs = 0;
     this._shieldTimerMs = 0;
@@ -2469,7 +2526,7 @@ export class EndlessRunnerGame {
 
     if (this._grantPowerShieldOnResume) {
       this._grantPowerShieldOnResume = false;
-      this._grantPowerShield(performance.now(), false);
+      this._grantPowerShield(false);
     }
 
     this._state = 'playing';
@@ -2761,12 +2818,10 @@ export class EndlessRunnerGame {
     const width = DESIGN_WIDTH;
     const height = DESIGN_HEIGHT;
 
+    this._ctx.clearRect(0, 0, width, height);
+
     if (this._assets) {
-      this._drawBackground();
       this._drawConfetti();
-    } else {
-      this._ctx.fillStyle = '#0a1628';
-      this._ctx.fillRect(0, 0, width, height);
     }
 
     if (this._state === 'waiting') {
@@ -2785,6 +2840,7 @@ export class EndlessRunnerGame {
           ? 'pointer'
           : 'default';
       this._drawWelcomeScreen(timestamp);
+      this._drawSecondaryMenuOverlay();
       this._drawMainShopScreen(timestamp);
       this._drawHomeButton(timestamp);
     } else if (this._state === 'gameover') {
@@ -2806,6 +2862,9 @@ export class EndlessRunnerGame {
     if (this._state !== 'waiting') {
       this._drawExplosions(timestamp);
     }
+
+    const menuBackdropVisible = this._isMenuBackdropVisible();
+    this._syncMenuBackdropLayer(menuBackdropVisible);
 
     if (this._state === 'paused') {
       this._canvas.style.cursor =
@@ -2883,8 +2942,6 @@ export class EndlessRunnerGame {
   }
 
   private _drawLevelIntroScreen(): void {
-    this._drawMenuBackdrop();
-
     const panel = this._getMenuPanelBounds();
     this._drawMenuPanelBackground(panel);
 
@@ -3034,8 +3091,6 @@ export class EndlessRunnerGame {
   }
 
   private _drawLevelCompleteScreen(timestamp: number = 0): void {
-    this._drawMenuBackdrop();
-
     const panel = this._getMenuPanelBounds();
     this._drawMenuPanelBackground(panel);
 
@@ -3076,9 +3131,6 @@ export class EndlessRunnerGame {
   }
 
   private _drawCountdownOverlay(timestamp: number): void {
-    this._ctx.fillStyle = COUNTDOWN.overlayColor;
-    this._ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-
     this._ctx.fillStyle = '#FFFFFF';
     this._ctx.font = menuFont(COUNTDOWN.fontSize);
     this._ctx.textAlign = 'center';
@@ -3101,19 +3153,6 @@ export class EndlessRunnerGame {
     }
   }
 
-  private _drawBackground(): void {
-    if (!this._assets) {
-      return;
-    }
-
-    this._ctx.drawImage(
-      this._assets.background,
-      0,
-      0,
-      DESIGN_WIDTH,
-      DESIGN_HEIGHT
-    );
-  }
 
   private _drawExplosions(timestamp: number): void {
     for (let i = 0; i < this._explosionFlashes.length; i++) {
@@ -3283,7 +3322,7 @@ export class EndlessRunnerGame {
       this._drawGodModeHoloRing(drawX, drawY);
     }
 
-    if (this._isPowerShieldActive(timestamp)) {
+    if (this._isPowerShieldActive()) {
       this._drawPowerShieldAura(drawX, drawY, timestamp);
     }
 
@@ -3308,7 +3347,7 @@ export class EndlessRunnerGame {
     const size = Math.round(SHIELD_DISPLAY_SIZE * 0.72);
     const shieldX = drawX + (this._playerWidth - size) / 2;
     const shieldY = drawY - size * 0.18;
-    const remainingMs = Math.max(0, this._powerShieldEndsAt - timestamp);
+    const remainingMs = this._powerShieldRemainingMs;
     const isWarning = remainingMs <= POWER_SHIELD_BLINK.warningMs;
 
     this._ctx.save();
@@ -3710,6 +3749,7 @@ export class EndlessRunnerGame {
     }
 
     const hearts = resolveDailyHearts(record.heartsRemaining, record.heartsDay);
+    this._dailyHeartsRemaining = hearts.heartsRemaining;
     this._dailyHeartsDay = hearts.heartsDay;
     this._achievementData = record.achievements || createDefaultGameAchievementData();
     this._applyDebugHeartsOverride();
@@ -3911,26 +3951,63 @@ export class EndlessRunnerGame {
     };
   }
 
-  private _drawMenuBackdrop(): void {
-    if (!this._backdropCanvas) {
-      this._backdropCanvas = document.createElement('canvas');
-      this._backdropCanvas.width = DESIGN_WIDTH;
-      this._backdropCanvas.height = DESIGN_HEIGHT;
+  private _isMenuBackdropVisible(): boolean {
+    return (
+      this._state === 'waiting' ||
+      this._state === 'shop' ||
+      this._state === 'gameover' ||
+      this._state === 'paused' ||
+      this._state === 'levelComplete' ||
+      this._state === 'question' ||
+      this._state === 'levelIntro' ||
+      this._state === 'countdown'
+    );
+  }
+
+  private _syncMenuBackdropLayer(visible: boolean): void {
+    this._menuBackdropLayer.style.opacity = visible ? '1' : '0';
+    this._menuBackdropLayer.style.background = this._getMenuBackdropOverlayColor();
+  }
+
+  private _getMenuBackdropOverlayColor(): string {
+    if (this._usesConfirmOverlayBackdrop()) {
+      return PAUSE_CONFIRM.overlayColor;
     }
 
-    const bufferCtx = this._backdropCanvas.getContext('2d');
-    if (!bufferCtx) {
+    return MENU_BACKDROP.overlayColor;
+  }
+
+  private _usesConfirmOverlayBackdrop(): boolean {
+    return (
+      (this._state === 'paused' && this._showPauseMainMenuConfirm) ||
+      this._state === 'shop' ||
+      (this._state === 'gameover' && this._gameOverShowsShop)
+    );
+  }
+
+  private _drawSecondaryMenuOverlay(): void {
+    let scratch = this._secondaryMenuOverlayScratch;
+    if (!scratch) {
+      scratch = document.createElement('canvas');
+      scratch.width = DESIGN_WIDTH;
+      scratch.height = DESIGN_HEIGHT;
+      this._secondaryMenuOverlayScratch = scratch;
+    }
+
+    const scratchContext = scratch.getContext('2d');
+    if (!scratchContext) {
       return;
     }
 
-    bufferCtx.drawImage(this._canvas, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+    scratchContext.clearRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+    scratchContext.drawImage(this._canvas, 0, 0);
 
     this._ctx.save();
     this._ctx.filter = 'blur(' + MENU_BACKDROP.blurPx + 'px)';
-    this._ctx.drawImage(this._backdropCanvas, 0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+    this._ctx.drawImage(scratch, 0, 0);
     this._ctx.restore();
 
-    this._ctx.fillStyle = MENU_BACKDROP.overlayColor;
+    this._ctx.fillStyle = PAUSE_CONFIRM.overlayColor;
     this._ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
   }
 
@@ -4526,6 +4603,10 @@ export class EndlessRunnerGame {
   }
 
   private _isMuteButtonVisible(): boolean {
+    if (this._state === 'paused' && this._showPauseMainMenuConfirm) {
+      return false;
+    }
+
     return this._state === 'waiting' || this._state === 'shop' || this._state === 'paused';
   }
 
@@ -4856,8 +4937,6 @@ export class EndlessRunnerGame {
   }
 
   private _drawMainShopScreen(timestamp: number): void {
-    this._drawMenuBackdrop();
-
     const panel = this._getMenuPanelBounds();
     this._drawMenuPanelBackground(panel);
     this._drawShopContent(MAIN_SHOP_MENU, timestamp);
@@ -5002,8 +5081,6 @@ export class EndlessRunnerGame {
   }
 
   private _drawWelcomeScreen(timestamp: number): void {
-    this._drawMenuBackdrop();
-
     const panel = this._getWelcomePanelBounds();
     const content = this._getMenuContentBounds(panel);
     const layout = this._getWelcomeContentLayout();
@@ -5063,8 +5140,6 @@ export class EndlessRunnerGame {
   }
 
   private _drawGameOverScreen(timestamp: number = 0): void {
-    this._drawMenuBackdrop();
-
     const panel = this._getMenuPanelBounds();
     this._drawMenuPanelBackground(panel);
 
@@ -5160,8 +5235,6 @@ export class EndlessRunnerGame {
   }
 
   private _drawPauseScreen(timestamp: number = 0): void {
-    this._drawMenuBackdrop();
-
     const panel = this._getMenuPanelBounds();
     this._drawMenuPanelBackground(panel);
 
@@ -5228,8 +5301,7 @@ export class EndlessRunnerGame {
   }
 
   private _drawPauseConfirmDialog(timestamp: number = 0): void {
-    this._ctx.fillStyle = PAUSE_CONFIRM.overlayColor;
-    this._ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+    this._drawSecondaryMenuOverlay();
 
     const panel = this._getPauseConfirmPanelBounds();
     this._drawMenuPanelBackground(panel);
@@ -5330,8 +5402,6 @@ export class EndlessRunnerGame {
     if (!question) {
       return;
     }
-
-    this._drawMenuBackdrop();
 
     this._drawMenuPanelBackground(panel);
 

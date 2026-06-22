@@ -79,7 +79,6 @@ export interface ConfettiParticle {
 }
 
 export interface LoadedAssets {
-  background: HTMLImageElement;
   character: HTMLImageElement;
   coin: HTMLImageElement;
   coinSimple: HTMLImageElement;
@@ -122,6 +121,16 @@ export const DESIGN_HEIGHT = 1080;
 export const DESIGN_ASPECT = DESIGN_WIDTH / DESIGN_HEIGHT;
 export const LEGACY_HEIGHT = 450;
 export const SCALE = DESIGN_HEIGHT / LEGACY_HEIGHT;
+
+/** Solid fallback while the screen background image loads. */
+export const GAME_BACKGROUND_COLOR = '#0a1628';
+
+/** Full-screen HTML backdrop shared by the page shell and the game viewport. */
+export const SCREEN_BACKGROUND = {
+  fallbackColor: GAME_BACKGROUND_COLOR,
+  objectFit: 'cover' as const,
+  objectPosition: 'center center'
+};
 
 export const s = (value: number): number => Math.round(value * SCALE);
 export const FONT_FAMILY = 'Francois One';
@@ -597,11 +606,11 @@ export const PAUSE_CONFIRM = {
 };
 
 // =============================================================================
-// MENU BACKDROP — blur + dim when welcome or question popup is shown
+// MENU BACKDROP — full-screen dark blur when a menu overlay is open
 // =============================================================================
 export const MENU_BACKDROP = {
   blurPx: 6,
-  overlayColor: 'rgba(0, 0, 0, 0.2)'
+  overlayColor: 'rgba(0, 0, 0, 0.35)'
 };
 
 // Button bg nine-slice insets (source image pixels, 1206×341)
