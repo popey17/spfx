@@ -211,7 +211,7 @@ export const HOME_BUTTON = {
 export const BACK_BTN_NATIVE = { width: 160, height: 160 };
 
 // =============================================================================
-// MUTE BUTTON — top-right music toggle (welcome + pause screens)
+// MUTE BUTTON — top-right audio menu (welcome, pause, and in-game HUD)
 // =============================================================================
 export const MUTE_BUTTON = {
   marginX: 15,
@@ -219,6 +219,33 @@ export const MUTE_BUTTON = {
   iconSize: 30,
   hitPadding: 8
 };
+
+export const AUDIO_MENU = {
+  panelWidth: 100,
+  paddingX: 8,
+  paddingY: 8,
+  rowHeight: 18,
+  rowGap: 8,
+  gapBelowButton: 15,
+  borderRadius: 5,
+  fontSize: 12,
+  labelMusic: 'Music',
+  labelSound: 'Sound',
+  background: '#111b2e',
+  borderColor: '#E5A020',
+  borderWidth: 2,
+  textColor: '#FFFFFF',
+  toggle: {
+    width: 25,
+    height: 15,
+    knobDiameter: 12,
+    borderRadius: 50,
+    trackOff: '#3c4654',
+    trackOn: '#F57C00',
+    knobColor: '#FFFFFF',
+    inset: 2
+  }
+} as const;
 
 // =============================================================================
 // DAILY HEARTS — persisted per player, reset each calendar day

@@ -56,6 +56,7 @@ import {
   BACK_BTN_NATIVE,
   MUTE_BUTTON,
   MUTE_BTN_NATIVE,
+  AUDIO_MENU,
   GAME_OVER_MENU,
   PAUSE_MENU,
   QUESTION_POPUP,
@@ -193,8 +194,12 @@ export class EndlessRunnerGame {
   private readonly _boundPointerLeave: (event: PointerEvent) => void;
   private readonly _boundClick: (event: MouseEvent) => void;
   private readonly _boundUnlockAudio: () => void;
+  private readonly _boundVisualViewportResize: (() => void) | undefined;
   private readonly _playerWidth: number;
   private _resizeObserver: ResizeObserver | undefined;
+  private _styleOverrides: Array<{ element: HTMLElement; property: string; value: string }> = [];
+  private _layoutTarget: HTMLElement | undefined;
+  private _layoutTargetStyle = '';
 
   private _animationFrameId: number = 0;
   private _lastTimestamp: number = 0;
@@ -279,7 +284,10 @@ export class EndlessRunnerGame {
   private _cheatPizzaParty: boolean = false;
   private _pendingPizzaConfetti: boolean = false;
   private _audioUnlocked: boolean = false;
-  private _musicMuted: boolean = false;
+  private _musicEnabled: boolean = true;
+  private _sfxEnabled: boolean = true;
+  private _audioMenuOpen: boolean = false;
+  private _audioMenuHoverTarget: 'music' | 'sfx' | null = null;
 
   constructor(target: HTMLElement, options: EndlessRunnerGameOptions = {}) {
     this._progressService = options.progressService;
@@ -294,6 +302,10 @@ export class EndlessRunnerGame {
     this._boundKeyDown = this._onKeyDown.bind(this);
     this._boundKeyUp = this._onKeyUp.bind(this);
     this._boundResize = this._resizeCanvas.bind(this);
+    this._boundVisualViewportResize =
+      typeof window !== 'undefined' && window.visualViewport
+        ? this._resizeCanvas.bind(this)
+        : undefined;
     this._boundGameLoop = this._gameLoop.bind(this);
     this._boundPointerDown = this._onPointerDown.bind(this);
     this._boundPointerUp = this._onPointerUp.bind(this);
@@ -311,13 +323,14 @@ export class EndlessRunnerGame {
     this._ensureGameFont();
 
     if (this._fullscreenLayout) {
+      this._layoutTarget = target;
       this._applyFullscreenPageLayout(target);
     }
 
     this._container = document.createElement('div');
     this._container.style.cssText = this._fullscreenLayout
-      ? 'position:fixed;top:0;left:0;width:100vw;height:100vh;display:flex;justify-content:center;align-items:center;overflow:hidden;background:#0a1628;z-index:9999;'
-      : 'position:relative;width:100%;display:flex;justify-content:center;align-items:center;overflow:hidden;';
+      ? 'position:fixed;inset:0;width:100dvw;height:100dvh;max-width:100vw;max-height:100vh;display:flex;justify-content:center;align-items:center;overflow:hidden;background:#0a1628;z-index:9999;'
+      : 'position:relative;width:100%;min-height:100dvh;display:flex;justify-content:center;align-items:center;overflow:hidden;background:#0a1628;';
 
     this._viewport = document.createElement('div');
     this._viewport.style.cssText = 'position:relative;overflow:hidden;flex-shrink:0;';
@@ -346,6 +359,10 @@ export class EndlessRunnerGame {
     document.addEventListener('keydown', this._boundKeyDown, true);
     document.addEventListener('keyup', this._boundKeyUp, true);
     window.addEventListener('resize', this._boundResize);
+    if (this._boundVisualViewportResize && window.visualViewport) {
+      window.visualViewport.addEventListener('resize', this._boundVisualViewportResize);
+      window.visualViewport.addEventListener('scroll', this._boundVisualViewportResize);
+    }
     this._canvas.addEventListener('pointerdown', this._boundPointerDown);
     this._canvas.addEventListener('pointerup', this._boundPointerUp);
     this._canvas.addEventListener('pointercancel', this._boundPointerUp);
@@ -382,6 +399,10 @@ export class EndlessRunnerGame {
     document.removeEventListener('keydown', this._boundKeyDown, true);
     document.removeEventListener('keyup', this._boundKeyUp, true);
     window.removeEventListener('resize', this._boundResize);
+    if (this._boundVisualViewportResize && window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', this._boundVisualViewportResize);
+      window.visualViewport.removeEventListener('scroll', this._boundVisualViewportResize);
+    }
     this._canvas.removeEventListener('pointerdown', this._boundPointerDown);
     this._canvas.removeEventListener('pointerup', this._boundPointerUp);
     this._canvas.removeEventListener('pointercancel', this._boundPointerUp);
@@ -484,12 +505,36 @@ export class EndlessRunnerGame {
     });
   }
 
+  private _pushStyleOverride(element: HTMLElement, property: string, value: string): void {
+    const previous = element.style.getPropertyValue(property);
+    element.style.setProperty(property, value);
+    this._styleOverrides.push({ element, property, value: previous });
+  }
+
+  private _restoreStyleOverrides(): void {
+    for (let i = this._styleOverrides.length - 1; i >= 0; i--) {
+      const override = this._styleOverrides[i];
+      if (override.value) {
+        override.element.style.setProperty(override.property, override.value);
+      } else {
+        override.element.style.removeProperty(override.property);
+      }
+    }
+
+    this._styleOverrides = [];
+  }
+
   private _applyFullscreenPageLayout(target: HTMLElement): void {
+    this._layoutTargetStyle = target.style.cssText;
     target.style.cssText =
       'width:100%;min-height:0;padding:0;margin:0;overflow:visible;background:transparent;';
 
     let element: HTMLElement | null = target.parentElement;
     while (element && element !== document.body) {
+      this._pushStyleOverride(element, 'max-width', element.style.getPropertyValue('max-width'));
+      this._pushStyleOverride(element, 'width', element.style.getPropertyValue('width'));
+      this._pushStyleOverride(element, 'padding', element.style.getPropertyValue('padding'));
+      this._pushStyleOverride(element, 'margin', element.style.getPropertyValue('margin'));
       element.style.maxWidth = 'none';
       element.style.width = '100%';
       element.style.padding = '0';
@@ -497,19 +542,35 @@ export class EndlessRunnerGame {
       element = element.parentElement;
     }
 
+    this._pushStyleOverride(document.documentElement, 'overflow', document.documentElement.style.overflow);
+    this._pushStyleOverride(document.body, 'overflow', document.body.style.overflow);
+    this._pushStyleOverride(document.body, 'margin', document.body.style.margin);
+    this._pushStyleOverride(document.body, 'background', document.body.style.background);
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
     document.body.style.margin = '0';
     document.body.style.background = '#0a1628';
 
-    const pageHeader = document.getElementById('spSiteHeader');
-    if (pageHeader) {
-      pageHeader.style.display = 'none';
+    const hideSelectors = [
+      '#spSiteHeader',
+      '#SuiteNavWrapper',
+      '#sp-appBar',
+      '[data-automation-id="pageCommandBar"]',
+      '[data-automation-id="pageHeader"]'
+    ];
+
+    for (let i = 0; i < hideSelectors.length; i++) {
+      const node = document.querySelector(hideSelectors[i]) as HTMLElement | null;
+      if (node) {
+        this._pushStyleOverride(node, 'display', node.style.display);
+        node.style.display = 'none';
+      }
     }
 
-    const commandBar = document.querySelector('[data-automation-id="pageCommandBar"]') as HTMLElement | null;
-    if (commandBar) {
-      commandBar.style.display = 'none';
+    const canvasZone = target.closest('[data-automation-id="CanvasZone"]') as HTMLElement | null;
+    if (canvasZone) {
+      this._pushStyleOverride(canvasZone, 'padding', canvasZone.style.padding);
+      canvasZone.style.padding = '0';
     }
   }
 
@@ -518,70 +579,81 @@ export class EndlessRunnerGame {
       return;
     }
 
-    document.documentElement.style.overflow = '';
-    document.body.style.overflow = '';
-    document.body.style.margin = '';
-    document.body.style.background = '';
-
-    const pageHeader = document.getElementById('spSiteHeader');
-    if (pageHeader) {
-      pageHeader.style.display = '';
+    if (this._layoutTarget) {
+      this._layoutTarget.style.cssText = this._layoutTargetStyle;
     }
 
-    const commandBar = document.querySelector('[data-automation-id="pageCommandBar"]') as HTMLElement | null;
-    if (commandBar) {
-      commandBar.style.display = '';
-    }
+    this._restoreStyleOverrides();
+  }
+
+  private _getViewportSize(): { width: number; height: number } {
+    const visualViewport = window.visualViewport;
+    const width = visualViewport?.width ?? window.innerWidth;
+    const height = visualViewport?.height ?? window.innerHeight;
+
+    return {
+      width: Math.max(1, width),
+      height: Math.max(1, height)
+    };
   }
 
   private _getAvailableSize(): { width: number; height: number } {
+    const viewport = this._getViewportSize();
+
     if (this._fullscreenLayout) {
-      return {
-        width: window.innerWidth,
-        height: window.innerHeight
-      };
+      return viewport;
     }
 
     const parent = this._container.parentElement;
-    const width = parent?.clientWidth || 0;
+    if (parent) {
+      const rect = parent.getBoundingClientRect();
+      const width = rect.width > 0 ? rect.width : viewport.width;
+      const height = rect.height > 0 ? rect.height : viewport.height;
 
-    if (width <= 0) {
-      const fallbackWidth = Math.min(window.innerWidth, 960);
       return {
-        width: fallbackWidth,
-        height: fallbackWidth / DESIGN_ASPECT
+        width: Math.max(1, width),
+        height: Math.max(1, height)
+      };
+    }
+
+    return viewport;
+  }
+
+  private _fitDesignToViewport(
+    availableWidth: number,
+    availableHeight: number
+  ): { width: number; height: number } {
+    const viewportAspect = availableWidth / availableHeight;
+
+    if (viewportAspect > DESIGN_ASPECT) {
+      return {
+        width: availableHeight * DESIGN_ASPECT,
+        height: availableHeight
       };
     }
 
     return {
-      width,
-      height: width / DESIGN_ASPECT
+      width: availableWidth,
+      height: availableWidth / DESIGN_ASPECT
     };
   }
 
   private _resizeCanvas(): void {
     const available = this._getAvailableSize();
-    const viewportAspect = available.width / available.height;
-
-    let displayWidth: number;
-    let displayHeight: number;
-
-    if (viewportAspect > DESIGN_ASPECT) {
-      displayHeight = available.height;
-      displayWidth = displayHeight * DESIGN_ASPECT;
-    } else {
-      displayWidth = available.width;
-      displayHeight = displayWidth / DESIGN_ASPECT;
-    }
+    const fitted = this._fitDesignToViewport(available.width, available.height);
 
     if (this._fullscreenLayout) {
-      this._container.style.height = '100vh';
+      this._container.style.width = '100dvw';
+      this._container.style.height = '100dvh';
+      this._container.style.maxWidth = '100vw';
+      this._container.style.maxHeight = '100vh';
     } else {
-      this._container.style.height = displayHeight + 'px';
+      this._container.style.width = '100%';
+      this._container.style.height = fitted.height + 'px';
     }
 
-    this._viewport.style.width = displayWidth + 'px';
-    this._viewport.style.height = displayHeight + 'px';
+    this._viewport.style.width = fitted.width + 'px';
+    this._viewport.style.height = fitted.height + 'px';
 
     this._canvas.width = DESIGN_WIDTH;
     this._canvas.height = DESIGN_HEIGHT;
@@ -911,6 +983,17 @@ export class EndlessRunnerGame {
         this._menuFocusIndex = hoveredIndex;
       }
     }
+
+    if (this._audioMenuOpen) {
+      this._audioMenuHoverTarget = null;
+      if (this._isPointInRect(point.x, point.y, this._getAudioToggleBounds('music'))) {
+        this._audioMenuHoverTarget = 'music';
+      } else if (this._isPointInRect(point.x, point.y, this._getAudioToggleBounds('sfx'))) {
+        this._audioMenuHoverTarget = 'sfx';
+      }
+    } else {
+      this._audioMenuHoverTarget = null;
+    }
   }
 
   private _clearPointerPosition(): void {
@@ -967,12 +1050,8 @@ export class EndlessRunnerGame {
 
     const point = this._canvasPointFromClient(clientX, clientY);
 
-    if (this._state === 'waiting' || this._state === 'shop' || this._state === 'paused') {
-      if (this._isPointInRect(point.x, point.y, this._getMuteButtonBounds())) {
-        this._lastCanvasPressAt = now;
-        this._toggleMusicMute();
-        return true;
-      }
+    if (this._handleAudioControlPress(point, now)) {
+      return true;
     }
 
     if (this._state === 'waiting' || this._state === 'shop') {
@@ -1173,6 +1252,13 @@ export class EndlessRunnerGame {
     }
 
     if (this._isEscapeKey(event)) {
+      if (this._audioMenuOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        this._closeAudioMenu();
+        return;
+      }
+
       if (this._state === 'paused') {
         event.preventDefault();
         event.stopPropagation();
@@ -1262,6 +1348,7 @@ export class EndlessRunnerGame {
   }
 
   private _goToMainMenu(): void {
+    this._closeAudioMenu();
     this._gameOverShowsShop = false;
     this._savePlayerProgress(true).catch(() => {
       // Error already logged in _savePlayerProgress.
@@ -1454,6 +1541,7 @@ export class EndlessRunnerGame {
   }
 
   private _startGame(): void {
+    this._closeAudioMenu();
     this._gameOverShowsShop = false;
     this._isFreePlaySession = this._freeModeUnlocked;
     this._sessionHeartsLost = 0;
@@ -2469,6 +2557,10 @@ export class EndlessRunnerGame {
   }
 
   private _playSfx(source: HTMLAudioElement): void {
+    if (this._isSfxMuted() || !this._audioUnlocked) {
+      return;
+    }
+
     const sound = source.cloneNode(true) as HTMLAudioElement;
     sound.volume = source.volume;
     sound.play().catch(() => {
@@ -2521,7 +2613,7 @@ export class EndlessRunnerGame {
   }
 
   private _resumeMusicForCurrentState(): void {
-    if (this._musicMuted) {
+    if (this._isMusicMuted()) {
       return;
     }
 
@@ -2539,7 +2631,7 @@ export class EndlessRunnerGame {
   }
 
   private _ensureMenuMusicPlaying(): void {
-    if (this._state !== 'waiting' || this._musicMuted) {
+    if (this._state !== 'waiting' || this._isMusicMuted()) {
       return;
     }
 
@@ -2559,7 +2651,7 @@ export class EndlessRunnerGame {
     this._stopGameMusic();
     this._applyMusicMuteState();
 
-    if (this._musicMuted) {
+    if (this._isMusicMuted()) {
       return;
     }
 
@@ -2578,7 +2670,7 @@ export class EndlessRunnerGame {
     this._stopMenuMusic();
     this._applyMusicMuteState();
 
-    if (this._musicMuted) {
+    if (this._isMusicMuted()) {
       return;
     }
 
@@ -2593,7 +2685,7 @@ export class EndlessRunnerGame {
   }
 
   private _resumeGameMusic(): void {
-    if (this._state !== 'playing' || this._musicMuted) {
+    if (this._state !== 'playing' || this._isMusicMuted()) {
       return;
     }
 
@@ -2603,8 +2695,16 @@ export class EndlessRunnerGame {
     });
   }
 
+  private _isMusicMuted(): boolean {
+    return !this._musicEnabled;
+  }
+
+  private _isSfxMuted(): boolean {
+    return !this._sfxEnabled;
+  }
+
   private _applyMusicMuteState(): void {
-    const shouldMute = this._musicMuted || !this._audioUnlocked;
+    const shouldMute = this._isMusicMuted() || !this._audioUnlocked;
     this._menuMusic.muted = shouldMute;
     this._gameMusic.muted = shouldMute;
 
@@ -2614,19 +2714,31 @@ export class EndlessRunnerGame {
     }
   }
 
-  private _toggleMusicMute(): void {
-    this._musicMuted = !this._musicMuted;
+  private _setMusicEnabled(enabled: boolean): void {
+    const wasMusicMuted = this._isMusicMuted();
+    this._musicEnabled = enabled;
 
-    if (this._musicMuted) {
-      this._menuMusic.pause();
-      this._gameMusic.pause();
+    if (this._isMusicMuted()) {
+      if (!wasMusicMuted) {
+        this._menuMusic.pause();
+        this._gameMusic.pause();
+      }
     }
 
     this._applyMusicMuteState();
 
-    if (!this._musicMuted) {
+    if (!this._isMusicMuted() && wasMusicMuted) {
       this._resumeMusicForCurrentState();
     }
+  }
+
+  private _setSfxEnabled(enabled: boolean): void {
+    this._sfxEnabled = enabled;
+  }
+
+  private _closeAudioMenu(): void {
+    this._audioMenuOpen = false;
+    this._audioMenuHoverTarget = null;
   }
 
   private _stopGameMusic(): void {
@@ -2660,23 +2772,21 @@ export class EndlessRunnerGame {
     if (this._state === 'waiting') {
       this._canvas.style.cursor =
         this._isHomeButtonHovered() ||
-        this._isMuteButtonHovered() ||
+        this._isAudioControlHovered() ||
         this._getHoveredMenuButtonIndex() >= 0
           ? 'pointer'
           : 'default';
       this._drawWelcomeScreen(timestamp);
-      this._drawMuteButton(timestamp);
     } else if (this._state === 'shop') {
       this._canvas.style.cursor =
         this._isHomeButtonHovered() ||
-        this._isMuteButtonHovered() ||
+        this._isAudioControlHovered() ||
         this._getHoveredMenuButtonIndex() >= 0
           ? 'pointer'
           : 'default';
       this._drawWelcomeScreen(timestamp);
       this._drawMainShopScreen(timestamp);
       this._drawHomeButton(timestamp);
-      this._drawMuteButton(timestamp);
     } else if (this._state === 'gameover') {
       this._canvas.style.cursor = this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
       this._drawGameOverScreen(timestamp);
@@ -2699,7 +2809,7 @@ export class EndlessRunnerGame {
 
     if (this._state === 'paused') {
       this._canvas.style.cursor =
-        this._isMuteButtonHovered() || this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
+        this._isAudioControlHovered() || this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
       this._drawPauseScreen(timestamp);
     } else if (this._state === 'question') {
       this._canvas.style.cursor = this._getHoveredMenuButtonIndex() >= 0 ? 'pointer' : 'default';
@@ -2711,6 +2821,18 @@ export class EndlessRunnerGame {
       this._drawLevelCompleteScreen(timestamp);
     } else if (this._state === 'countdown') {
       this._drawCountdownOverlay(timestamp);
+    }
+
+    if (!this._isMuteButtonVisible() && this._audioMenuOpen) {
+      this._closeAudioMenu();
+    }
+
+    if (this._isMuteButtonVisible()) {
+      this._drawMuteButton(timestamp);
+    }
+
+    if (this._audioMenuOpen) {
+      this._drawAudioMenuDropdown();
     }
 
     this._ctx.restore();
@@ -4407,6 +4529,99 @@ export class EndlessRunnerGame {
     return this._state === 'waiting' || this._state === 'shop' || this._state === 'paused';
   }
 
+  private _isAudioControlHovered(): boolean {
+    return this._isMuteButtonHovered() || this._audioMenuHoverTarget !== null;
+  }
+
+  private _getAudioMenuPanelHeight(): number {
+    return (
+      s(AUDIO_MENU.paddingY) * 2 +
+      s(AUDIO_MENU.rowHeight) * 2 +
+      s(AUDIO_MENU.rowGap)
+    );
+  }
+
+  private _getAudioMenuDropdownBounds(): { x: number; y: number; width: number; height: number } {
+    const muteBounds = this._getMuteButtonBounds();
+    const pad =
+      this._state === 'paused' ? s(PAUSE_MENU.muteButtonHitPadding) : s(MUTE_BUTTON.hitPadding);
+    const iconSize =
+      this._state === 'paused' ? s(PAUSE_MENU.muteButtonSize) : s(MUTE_BUTTON.iconSize);
+    const anchorRight = muteBounds.x + pad + iconSize;
+    const anchorBottom = muteBounds.y + pad + iconSize;
+    const width = s(AUDIO_MENU.panelWidth);
+    const height = this._getAudioMenuPanelHeight();
+
+    return {
+      x: Math.max(s(MUTE_BUTTON.marginX), anchorRight - width),
+      y: anchorBottom + s(AUDIO_MENU.gapBelowButton),
+      width,
+      height
+    };
+  }
+
+  private _getAudioMenuRowY(rowIndex: number): number {
+    const panel = this._getAudioMenuDropdownBounds();
+    return panel.y + s(AUDIO_MENU.paddingY) + rowIndex * (s(AUDIO_MENU.rowHeight) + s(AUDIO_MENU.rowGap));
+  }
+
+  private _getAudioToggleBounds(target: 'music' | 'sfx'): { x: number; y: number; width: number; height: number } {
+    const panel = this._getAudioMenuDropdownBounds();
+    const rowIndex = target === 'music' ? 0 : 1;
+    const rowY = this._getAudioMenuRowY(rowIndex);
+    const toggleWidth = s(AUDIO_MENU.toggle.width);
+    const toggleHeight = s(AUDIO_MENU.toggle.height);
+
+    return {
+      x: panel.x + panel.width - s(AUDIO_MENU.paddingX) - toggleWidth,
+      y: rowY + (s(AUDIO_MENU.rowHeight) - toggleHeight) / 2,
+      width: toggleWidth,
+      height: toggleHeight
+    };
+  }
+
+  private _handleAudioControlPress(point: { x: number; y: number }, now: number): boolean {
+    if (!this._isMuteButtonVisible()) {
+      return false;
+    }
+
+    if (this._audioMenuOpen) {
+      if (this._isPointInRect(point.x, point.y, this._getAudioToggleBounds('music'))) {
+        this._lastCanvasPressAt = now;
+        this._setMusicEnabled(!this._musicEnabled);
+        return true;
+      }
+
+      if (this._isPointInRect(point.x, point.y, this._getAudioToggleBounds('sfx'))) {
+        this._lastCanvasPressAt = now;
+        this._setSfxEnabled(!this._sfxEnabled);
+        return true;
+      }
+
+      if (this._isPointInRect(point.x, point.y, this._getMuteButtonBounds())) {
+        this._lastCanvasPressAt = now;
+        this._closeAudioMenu();
+        return true;
+      }
+
+      if (this._isPointInRect(point.x, point.y, this._getAudioMenuDropdownBounds())) {
+        return true;
+      }
+
+      this._closeAudioMenu();
+      return false;
+    }
+
+    if (this._isPointInRect(point.x, point.y, this._getMuteButtonBounds())) {
+      this._lastCanvasPressAt = now;
+      this._audioMenuOpen = true;
+      this._audioMenuHoverTarget = null;
+      return true;
+    }
+
+    return false;
+  }
+
   private _isMuteButtonHovered(): boolean {
     if (
       !this._isMuteButtonVisible() ||
@@ -4426,7 +4641,8 @@ export class EndlessRunnerGame {
       this._state === 'paused' ? s(PAUSE_MENU.muteButtonHitPadding) : s(MUTE_BUTTON.hitPadding);
     const iconSize =
       this._state === 'paused' ? s(PAUSE_MENU.muteButtonSize) : s(MUTE_BUTTON.iconSize);
-    const image = this._musicMuted ? this._assets?.muteButton : this._assets?.soundButton;
+    const image =
+      this._musicEnabled && this._sfxEnabled ? this._assets?.soundButton : this._assets?.muteButton;
 
     this._drawWithButtonHoverTransform(bounds, timestamp, hovered, (drawBounds) => {
       const iconX = drawBounds.x + pad;
@@ -4436,6 +4652,64 @@ export class EndlessRunnerGame {
         this._ctx.drawImage(image, iconX, iconY, iconSize, iconSize);
       }
     });
+  }
+
+  private _drawAudioToggleSwitch(
+    bounds: { x: number; y: number; width: number; height: number },
+    enabled: boolean
+  ): void {
+    const toggle = AUDIO_MENU.toggle;
+    const radius = Math.min(s(toggle.borderRadius), bounds.height / 2);
+
+    this._ctx.fillStyle = enabled ? toggle.trackOn : toggle.trackOff;
+    this._roundRectPath(bounds.x, bounds.y, bounds.width, bounds.height, radius);
+    this._ctx.fill();
+
+    const knobDiameter = s(toggle.knobDiameter);
+    const inset = s(toggle.inset);
+    const knobY = bounds.y + (bounds.height - knobDiameter) / 2;
+    const knobX = enabled
+      ? bounds.x + bounds.width - inset - knobDiameter
+      : bounds.x + inset;
+
+    this._ctx.fillStyle = toggle.knobColor;
+    this._ctx.beginPath();
+    this._ctx.arc(knobX + knobDiameter / 2, knobY + knobDiameter / 2, knobDiameter / 2, 0, Math.PI * 2);
+    this._ctx.fill();
+  }
+
+  private _drawAudioMenuDropdown(): void {
+    const panel = this._getAudioMenuDropdownBounds();
+    const radius = s(AUDIO_MENU.borderRadius);
+
+    this._ctx.fillStyle = AUDIO_MENU.background;
+    this._roundRectPath(panel.x, panel.y, panel.width, panel.height, radius);
+    this._ctx.fill();
+
+    this._ctx.strokeStyle = AUDIO_MENU.borderColor;
+    this._ctx.lineWidth = s(AUDIO_MENU.borderWidth);
+    this._roundRectPath(panel.x, panel.y, panel.width, panel.height, radius);
+    this._ctx.stroke();
+
+    const rows: Array<{ target: 'music' | 'sfx'; label: string; enabled: boolean }> = [
+      { target: 'music', label: AUDIO_MENU.labelMusic, enabled: this._musicEnabled },
+      { target: 'sfx', label: AUDIO_MENU.labelSound, enabled: this._sfxEnabled }
+    ];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowY = this._getAudioMenuRowY(i);
+      const labelX = panel.x + s(AUDIO_MENU.paddingX);
+      const labelY = rowY + s(AUDIO_MENU.rowHeight) / 2;
+
+      this._ctx.fillStyle = AUDIO_MENU.textColor;
+      this._ctx.font = menuFont(AUDIO_MENU.fontSize);
+      this._ctx.textAlign = 'left';
+      this._ctx.textBaseline = 'middle';
+      this._ctx.fillText(row.label, labelX, labelY);
+
+      this._drawAudioToggleSwitch(this._getAudioToggleBounds(row.target), row.enabled);
+    }
   }
 
   private _getGameOverMenuButtonCount(): number {
@@ -4928,8 +5202,6 @@ export class EndlessRunnerGame {
     if (this._showPauseMainMenuConfirm) {
       this._drawPauseConfirmDialog(timestamp);
     }
-
-    this._drawMuteButton(timestamp);
   }
 
   private _getPauseConfirmPanelBounds(): { x: number; y: number; width: number; height: number } {

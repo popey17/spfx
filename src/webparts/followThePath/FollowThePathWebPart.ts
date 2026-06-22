@@ -194,18 +194,7 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
   }
 
   private _isFullscreenLayout(): boolean {
-    if (this.displayMode !== DisplayMode.Read) {
-      return false;
-    }
-
-    const path = window.location.pathname.toLowerCase();
-    const params = new URLSearchParams(window.location.search);
-
-    return (
-      path.indexOf('follow-the-path') !== -1 ||
-      params.get('env') === 'WebView' ||
-      params.get('layout') === 'fullscreen'
-    );
+    return this.displayMode === DisplayMode.Read;
   }
 
   protected onDispose(): void {
