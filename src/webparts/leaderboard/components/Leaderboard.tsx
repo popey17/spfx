@@ -179,6 +179,7 @@ const Leaderboard: React.FC<ILeaderboardProps> = ({
         </div>
 
         <div className={styles.panel__inner}>
+          <img src={require('../assets/img_bg.png')} alt="Background" className={styles.panel__inner__bg} />
           {showCloseButton && (
             <button
               type="button"
