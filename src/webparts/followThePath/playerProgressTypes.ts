@@ -3,11 +3,11 @@ import {
   MAX_LIVES,
   QUESTIONS_PER_LEVEL,
   TOTAL_QUESTION_COUNT,
-  LEVEL_XP_REWARDS,
-  DAILY_HEARTS
+  LEVEL_XP_REWARDS
 } from './gameConfig';
 import type { AchievementSessionUpdate, GameAchievementData } from './gameAchievementTypes';
 import { createDefaultGameAchievementData } from './gameAchievementTypes';
+import { getDailyHeartsDayKey } from './gameDateContext';
 import type { UserLeaderBoardData } from '../leaderboard/leaderboardTypes';
 
 export type { AchievementSessionUpdate, DailyGameStatusRecord, GameAchievementData } from './gameAchievementTypes';
@@ -19,6 +19,7 @@ export {
   readGameAchievementsFromListItem,
   writeGameAchievementsToBody
 } from './gameAchievementTypes';
+export { getDailyHeartsDayKey, parseDateOverrideFromUrl } from './gameDateContext';
 
 /**
  * Users list — one row per player (profile + cross-game totals).
@@ -187,21 +188,11 @@ export interface GameSessionResult {
   achievementUpdate?: AchievementSessionUpdate;
 }
 
-export function getDailyHeartsDayKey(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: DAILY_HEARTS.timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(now);
-}
-
 export function resolveDailyHearts(
   heartsRemaining: number | undefined,
-  heartsDay: string | undefined,
-  now: Date = new Date()
+  heartsDay: string | undefined
 ): { heartsRemaining: number; heartsDay: string } {
-  const today = getDailyHeartsDayKey(now);
+  const today = getDailyHeartsDayKey();
 
   if (!heartsDay || heartsDay !== today) {
     return {
@@ -224,10 +215,9 @@ export function resolveDailyHearts(
 /** Apply daily heart rules when the game session opens (always full hearts for today). */
 export function resolveDailyHeartsOnGameLoad(
   heartsRemaining: number | undefined,
-  heartsDay: string | undefined,
-  now: Date = new Date()
+  heartsDay: string | undefined
 ): { heartsRemaining: number; heartsDay: string } {
-  const { heartsDay: todayKey } = resolveDailyHearts(heartsRemaining, heartsDay, now);
+  const { heartsDay: todayKey } = resolveDailyHearts(heartsRemaining, heartsDay);
 
   return {
     heartsRemaining: MAX_LIVES,

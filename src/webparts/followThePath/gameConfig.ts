@@ -257,12 +257,13 @@ export const AUDIO_MENU = {
 } as const;
 
 // =============================================================================
-// DAILY HEARTS — persisted per player, reset each calendar day
+// DAILY HEARTS — persisted per player, reset each calendar day (SharePoint server clock)
 // =============================================================================
 export const DAILY_HEARTS = {
   /** IANA timezone used to determine when a new day starts. */
   timeZone: 'Asia/Singapore'
 };
+/** QA override: ?date=YYYY-MM-DD uses that calendar day instead of SharePoint server date. */
 
 // =============================================================================
 // SHARED SHOP LAYOUT — used by main-menu shop and game-over shop
@@ -322,7 +323,7 @@ export type ShopMenuConfig = typeof SHOP_MENU_LAYOUT & {
 // =============================================================================
 export const MAIN_SHOP_MENU: ShopMenuConfig = {
   ...SHOP_MENU_LAYOUT,
-  titleText: 'OUT OF LIFE',
+  titleText: 'OUT OF LIVES',
   subtitleText: 'BUY MORE TO CONTINUE PLAYING',
   footerButtonText: 'BACK'
 };
@@ -334,7 +335,7 @@ export const STORE_BG_NATIVE = { width: 259, height: 130 };
 // =============================================================================
 export const GAME_OVER_SHOP_MENU: ShopMenuConfig = {
   ...SHOP_MENU_LAYOUT,
-  titleText: 'OUT OF LIFE',
+  titleText: 'OUT OF LIVES',
   subtitleText: 'BUY MORE TO CONTINUE PLAYING',
   footerButtonText: 'MAIN MENU'
 };

@@ -11,6 +11,8 @@ import { InMemoryPlayerProgressService } from './InMemoryPlayerProgressService';
 import { SharePointPlayerProgressService } from './SharePointPlayerProgressService';
 import { SharePointQuestionsService } from './SharePointQuestionsService';
 import { getDebugUserEmailFromUrl } from './debugUserOverride';
+import { initGameDateContext, parseDateOverrideFromUrl } from './gameDateContext';
+import { fetchSharePointClockSnapshot } from './sharePointServerTime';
 import {
   redirectToRegisterPage,
   isNoRedirectFromUrl,
@@ -51,8 +53,26 @@ export default class FollowThePathWebPart extends BaseClientSideWebPart<IFollowT
     const questionsService = new SharePointQuestionsService(this.context, {
       questionsListTitle: this.properties.questionsListTitle
     });
+    const dateOverride = parseDateOverrideFromUrl();
 
-    Promise.all([progressService.loadSession(), questionsService.loadQuestions()])
+    fetchSharePointClockSnapshot(this.context)
+      .catch((clockError: unknown) => {
+        console.warn('[FollowThePath] Could not read SharePoint server time; using browser clock.', clockError);
+        const clientTimeAtFetch = new Date();
+        return {
+          serverTime: clientTimeAtFetch,
+          clientTimeAtFetch
+        };
+      })
+      .then((clock) => {
+        initGameDateContext({
+          serverTime: clock.serverTime,
+          clientTimeAtFetch: clock.clientTimeAtFetch,
+          dateOverride
+        });
+
+        return Promise.all([progressService.loadSession(), questionsService.loadQuestions()]);
+      })
       .then(([session, questions]) => {
         if (renderGeneration !== this._renderGeneration) {
           return;

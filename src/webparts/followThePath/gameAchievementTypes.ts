@@ -1,12 +1,7 @@
-import { DAILY_HEARTS } from './gameConfig';
+import { getDailyHeartsDayKey } from './gameDateContext';
 
-function getAchievementDayKey(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: DAILY_HEARTS.timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(now);
+function getAchievementDayKey(): string {
+  return getDailyHeartsDayKey();
 }
 
 /**
@@ -223,8 +218,7 @@ function mergeDailyGameStatus(
 
 function upsertDailyGameStatusForUpdate(
   dailyGameStatus: DailyGameStatusRecord[],
-  update: AchievementSessionUpdate,
-  now: Date = new Date()
+  update: AchievementSessionUpdate
 ): DailyGameStatusRecord[] {
   const hasActivity = update.coinsCollected > 0 || update.incrementPlayCount;
 
@@ -232,7 +226,7 @@ function upsertDailyGameStatusForUpdate(
     return dailyGameStatus;
   }
 
-  const date = getAchievementDayKey(now);
+  const date = getAchievementDayKey();
   const next = dailyGameStatus.slice();
   let record = next.filter((entry) => entry.date === date)[0];
 
@@ -257,8 +251,7 @@ function upsertDailyGameStatusForUpdate(
 /** Apply an in-session achievement update to the current in-memory achievement state. */
 export function applyAchievementSessionUpdate(
   current: GameAchievementData,
-  update: AchievementSessionUpdate,
-  now: Date = new Date()
+  update: AchievementSessionUpdate
 ): GameAchievementData {
   const next: GameAchievementData = {
     ...current,
@@ -281,7 +274,7 @@ export function applyAchievementSessionUpdate(
     next.flawlessCampaignComplete = true;
   }
 
-  next.dailyGameStatus = upsertDailyGameStatusForUpdate(next.dailyGameStatus, update, now);
+  next.dailyGameStatus = upsertDailyGameStatusForUpdate(next.dailyGameStatus, update);
 
   return next;
 }
