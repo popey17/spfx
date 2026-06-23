@@ -21,6 +21,11 @@ export interface LeaderboardData {
 
 export type LeaderboardTab = 'individual' | 'lobt';
 
+/** Rows shown on the Individual tab in the leaderboard popup. */
+export const LEADERBOARD_DISPLAY_INDIVIDUAL_TOP_COUNT = 20;
+/** Rows shown on the LOBT tab in the leaderboard popup. */
+export const LEADERBOARD_DISPLAY_LOBT_TOP_COUNT = 5;
+
 /** Top-N thresholds synced to Users.LeaderBoardData when the leaderboard popup opens. */
 export const LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT = 50;
 export const LEADERBOARD_USER_LOBT_TOP_LIMIT = 10;
@@ -46,4 +51,6 @@ export interface UsersListRow {
   email: string;
   lobt: string;
   totalXp: number;
+  /** Latest LeaderBoardData from SharePoint — used to skip redundant sync writes. */
+  existingLeaderBoardData?: UserLeaderBoardData;
 }

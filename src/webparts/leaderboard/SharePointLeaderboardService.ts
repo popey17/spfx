@@ -1,7 +1,12 @@
 import { SPHttpClient, type SPHttpClientResponse } from '@microsoft/sp-http';
 import type { WebPartContext } from '@microsoft/sp-webpart-base';
 
-import { readUserProfileFromListItem, USERS_LIST_CONFIG, writeLeaderBoardDataToBody } from '../followThePath/playerProgressTypes';
+import {
+  isLeaderBoardDataEqual,
+  readUserProfileFromListItem,
+  USERS_LIST_CONFIG,
+  writeLeaderBoardDataToBody
+} from '../followThePath/playerProgressTypes';
 import type { ILeaderboardService } from './ILeaderboardService';
 import { LOBT_LIST_CONFIG, type LobtTypeRow } from './lobtListConfig';
 import {
@@ -9,8 +14,13 @@ import {
   buildLeaderBoardDataForTopIndividualUsers,
   buildLobtRankingFromTotals
 } from './leaderboardRanking';
+import {
+  logLeaderBoardDataSyncGate
+} from './leaderboardCalculationGate';
 import type { LeaderboardData, UsersListRow } from './leaderboardTypes';
 import {
+  LEADERBOARD_DISPLAY_INDIVIDUAL_TOP_COUNT,
+  LEADERBOARD_DISPLAY_LOBT_TOP_COUNT,
   LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT,
   LEADERBOARD_USER_LOBT_TOP_LIMIT
 } from './leaderboardTypes';
@@ -35,10 +45,16 @@ interface IListQueryOptions {
   top?: number;
 }
 
+const LEADERBOARD_SYNC_PATCH_MAX_ATTEMPTS = 6;
+const LEADERBOARD_SYNC_PATCH_RETRY_BASE_MS = 300;
+
+/** Prevents overlapping background syncs when the leaderboard is opened repeatedly. */
+let leaderBoardDataSyncInFlight: Promise<void> | undefined;
+
 /**
- * Loads leaderboard rankings without reading the full Users list.
- * - Individual tab: one query for top N users by TotalXP.
- * - LOBT tab: read LOBT types, then one filtered Users query per LOBT to sum XP.
+ * Loads leaderboard rankings from SharePoint.
+ * - Display: top 20 individual / top 5 LOBT (always, for UI rendering).
+ * - Sync: Users.LeaderBoardData for top 50 individual (only on or after August 2026).
  */
 export class SharePointLeaderboardService implements ILeaderboardService {
   private readonly _context: WebPartContext;
@@ -51,8 +67,8 @@ export class SharePointLeaderboardService implements ILeaderboardService {
     this._context = context;
     this._usersListTitle = options.usersListTitle || USERS_LIST_CONFIG.listTitle;
     this._lobtListTitle = options.lobtListTitle || LOBT_LIST_CONFIG.listTitle;
-    this._topCount = options.topCount ?? 20;
-    this._lobtTopCount = options.lobtTopCount ?? 5;
+    this._topCount = options.topCount ?? LEADERBOARD_DISPLAY_INDIVIDUAL_TOP_COUNT;
+    this._lobtTopCount = options.lobtTopCount ?? LEADERBOARD_DISPLAY_LOBT_TOP_COUNT;
   }
 
   public async loadLeaderboard(): Promise<LeaderboardData> {
@@ -60,9 +76,11 @@ export class SharePointLeaderboardService implements ILeaderboardService {
     const individualRows = await this._fetchIndividualTopUsers(LEADERBOARD_USER_INDIVIDUAL_TOP_LIMIT);
     const lobtTotals = await this._sumXpByLobtTypes(lobtTypes);
 
-    this._syncLeaderBoardDataForTopUsers(individualRows, lobtTotals).catch((error: unknown) => {
-      console.warn('[Leaderboard] Background LeaderBoardData sync failed.', error);
-    });
+    if (logLeaderBoardDataSyncGate()) {
+      this._syncLeaderBoardDataForTopUsers(individualRows, lobtTotals).catch((error: unknown) => {
+        console.warn('[Leaderboard] Background LeaderBoardData sync failed.', error);
+      });
+    }
 
     return {
       individual: buildIndividualRanking(individualRows, this._topCount),
@@ -74,6 +92,27 @@ export class SharePointLeaderboardService implements ILeaderboardService {
     individualTopRows: UsersListRow[],
     lobtTotals: Array<{ lobt: string; xp: number; orderNo: number; playerCount: number }>
   ): Promise<void> {
+    if (leaderBoardDataSyncInFlight) {
+      return leaderBoardDataSyncInFlight;
+    }
+
+    const syncPromise = this._syncLeaderBoardDataForTopUsersInternal(individualTopRows, lobtTotals);
+    leaderBoardDataSyncInFlight = syncPromise.then(
+      () => {
+        leaderBoardDataSyncInFlight = undefined;
+      },
+      () => {
+        leaderBoardDataSyncInFlight = undefined;
+      }
+    );
+
+    return syncPromise;
+  }
+
+  private async _syncLeaderBoardDataForTopUsersInternal(
+    individualTopRows: UsersListRow[],
+    lobtTotals: Array<{ lobt: string; xp: number; orderNo: number; playerCount: number }>
+  ): Promise<void> {
     try {
       const updates = buildLeaderBoardDataForTopIndividualUsers(
         individualTopRows,
@@ -82,21 +121,149 @@ export class SharePointLeaderboardService implements ILeaderboardService {
         LEADERBOARD_USER_LOBT_TOP_LIMIT
       );
 
-      await Promise.all(
-        updates.map(async ({ listItemId, data }) => {
-          try {
-            await this._patchListItem(listItemId, writeLeaderBoardDataToBody(data));
-          } catch (error) {
-            console.warn('[Leaderboard] Failed to sync LeaderBoardData for user.', { listItemId }, error);
-          }
-        })
-      );
+      for (let i = 0; i < updates.length; i++) {
+        const { listItemId, data } = updates[i];
+        const row = this._findUsersListRowById(individualTopRows, listItemId);
+
+        if (isLeaderBoardDataEqual(row?.existingLeaderBoardData, data)) {
+          continue;
+        }
+
+        try {
+          await this._patchListItemWithRetry(listItemId, writeLeaderBoardDataToBody(data));
+        } catch (error) {
+          console.warn('[Leaderboard] Failed to sync LeaderBoardData for user.', { listItemId }, error);
+        }
+      }
     } catch (error) {
       console.warn('[Leaderboard] Failed to sync LeaderBoardData for top users.', error);
     }
   }
 
-  private async _patchListItem(itemId: number, body: Record<string, string>): Promise<void> {
+  private async _patchListItemWithRetry(
+    itemId: number,
+    body: Record<string, string>,
+    maxAttempts: number = LEADERBOARD_SYNC_PATCH_MAX_ATTEMPTS
+  ): Promise<void> {
+    const fieldName = USERS_LIST_CONFIG.fields.leaderBoardData;
+    const fieldValue = body[fieldName];
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (fieldValue) {
+          await this._validateUpdateLeaderBoardData(itemId, fieldName, fieldValue);
+          return;
+        }
+
+        const ifMatch = await this._fetchListItemVersionTag(itemId);
+        await this._patchListItem(itemId, body, ifMatch);
+        return;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        if (!this._isSharePointSaveConflict(lastError) || attempt >= maxAttempts) {
+          throw lastError;
+        }
+
+        const backoffMs =
+          LEADERBOARD_SYNC_PATCH_RETRY_BASE_MS * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 100);
+        console.info(
+          `[Leaderboard] LeaderBoardData sync conflict for user ${itemId}; retry ${attempt}/${maxAttempts} in ${backoffMs}ms.`
+        );
+        await this._delay(backoffMs);
+      }
+
+      try {
+        const ifMatch = await this._fetchListItemVersionTag(itemId);
+        await this._patchListItem(itemId, body, ifMatch);
+        return;
+      } catch (mergeError) {
+        lastError = mergeError instanceof Error ? mergeError : new Error(String(mergeError));
+        if (!this._isSharePointSaveConflict(lastError) || attempt >= maxAttempts) {
+          throw lastError;
+        }
+      }
+    }
+
+    throw lastError || new Error(`Failed to update list item ${itemId} in "${this._usersListTitle}".`);
+  }
+
+  private async _validateUpdateLeaderBoardData(
+    itemId: number,
+    fieldName: string,
+    fieldValue: string
+  ): Promise<void> {
+    const listTitle = this._escapeODataString(this._usersListTitle);
+    const url =
+      `${this._context.pageContext.web.absoluteUrl}` +
+      `/_api/web/lists/getbytitle('${listTitle}')/items(${itemId})/ValidateUpdateListItem`;
+
+    const response = await this._context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+      headers: {
+        Accept: 'application/json;odata=nometadata',
+        'Content-type': 'application/json;odata=nometadata',
+        'odata-version': ''
+      },
+      body: JSON.stringify({
+        formValues: [{ FieldName: fieldName, FieldValue: fieldValue }],
+        bNewDocumentUpdate: false
+      })
+    });
+
+    if (!response.ok) {
+      throw await this._createSharePointError(
+        response,
+        `Failed to validate update for list item ${itemId} in "${this._usersListTitle}".`
+      );
+    }
+
+    const payload = (await response.json()) as {
+      value?: Array<{ ErrorMessage?: string }>;
+    };
+    const results = payload.value || [];
+
+    for (let i = 0; i < results.length; i++) {
+      const errorMessage = String(results[i].ErrorMessage || '').trim();
+      if (errorMessage) {
+        throw this._createSaveConflictError(
+          `Failed to validate update for list item ${itemId} in "${this._usersListTitle}". ${errorMessage}`
+        );
+      }
+    }
+  }
+
+  private async _fetchListItemVersionTag(itemId: number): Promise<string> {
+    const listTitle = this._escapeODataString(this._usersListTitle);
+    const url =
+      `${this._context.pageContext.web.absoluteUrl}` +
+      `/_api/web/lists/getbytitle('${listTitle}')/items(${itemId})?$select=Id`;
+
+    const response = await this._context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
+      headers: {
+        Accept: 'application/json;odata=nometadata',
+        'odata-version': ''
+      }
+    });
+
+    if (!response.ok) {
+      throw await this._createSharePointError(
+        response,
+        `Failed to read list item ${itemId} in "${this._usersListTitle}".`
+      );
+    }
+
+    // Consume body so the connection can be reused cleanly.
+    await response.json();
+
+    return response.headers.get('ETag') || response.headers.get('etag') || '*';
+  }
+
+  private async _patchListItem(
+    itemId: number,
+    body: Record<string, string>,
+    ifMatch: string = '*'
+  ): Promise<void> {
     const listTitle = this._escapeODataString(this._usersListTitle);
     const url =
       `${this._context.pageContext.web.absoluteUrl}` +
@@ -107,15 +274,59 @@ export class SharePointLeaderboardService implements ILeaderboardService {
         Accept: 'application/json;odata=nometadata',
         'Content-type': 'application/json;odata=nometadata',
         'odata-version': '',
-        'IF-MATCH': '*',
+        'IF-MATCH': ifMatch,
         'X-HTTP-Method': 'MERGE'
       },
       body: JSON.stringify(body)
     });
 
     if (!response.ok) {
-      throw new Error(await this._readSharePointError(response, `Failed to update list item in "${this._usersListTitle}".`));
+      throw await this._createSharePointError(
+        response,
+        `Failed to update list item in "${this._usersListTitle}".`
+      );
     }
+  }
+
+  private async _createSharePointError(response: SPHttpClientResponse, fallback: string): Promise<Error> {
+    const message = await this._readSharePointError(response, fallback);
+    const error = new Error(message);
+    (error as Error & { status?: number }).status = response.status;
+    return error;
+  }
+
+  private _createSaveConflictError(message: string): Error {
+    const error = new Error(message);
+    (error as Error & { status?: number }).status = 409;
+    return error;
+  }
+
+  private _isSharePointSaveConflict(error: Error): boolean {
+    const status = (error as Error & { status?: number }).status;
+    if (status === 409 || status === 412) {
+      return true;
+    }
+
+    const message = error.message;
+    return (
+      message.indexOf('Save Conflict') !== -1 ||
+      message.indexOf('(409)') !== -1 ||
+      message.indexOf('(412)') !== -1
+    );
+  }
+
+  private _findUsersListRowById(rows: UsersListRow[], listItemId: number): UsersListRow | undefined {
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].id === listItemId) {
+        return rows[i];
+      }
+    }
+
+    return undefined;
+  }
+
+  private _delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async _fetchActiveLobtTypes(): Promise<LobtTypeRow[]> {
@@ -160,7 +371,8 @@ export class SharePointLeaderboardService implements ILeaderboardService {
       fields.masteryQuestXp,
       fields.game1Level1Xp,
       fields.game1Level2Xp,
-      fields.game1Level3Xp
+      fields.game1Level3Xp,
+      fields.leaderBoardData
     ].join(',');
 
     const items = await this._fetchListItems({
@@ -310,7 +522,8 @@ export class SharePointLeaderboardService implements ILeaderboardService {
       title: profile.title,
       email: profile.email,
       lobt: profile.lobt,
-      totalXp: profile.totalXp
+      totalXp: profile.totalXp,
+      existingLeaderBoardData: profile.leaderBoardData
     };
   }
 

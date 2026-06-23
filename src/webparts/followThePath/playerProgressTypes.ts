@@ -562,6 +562,17 @@ export function serializeLeaderBoardData(data: UserLeaderBoardData): string {
   return JSON.stringify(data);
 }
 
+export function isLeaderBoardDataEqual(
+  existing: UserLeaderBoardData | undefined,
+  next: UserLeaderBoardData
+): boolean {
+  if (!existing) {
+    return false;
+  }
+
+  return serializeLeaderBoardData(existing) === serializeLeaderBoardData(next);
+}
+
 export function writeLeaderBoardDataToBody(data: UserLeaderBoardData): Record<string, string> {
   return {
     [USERS_LIST_CONFIG.fields.leaderBoardData]: serializeLeaderBoardData(data)

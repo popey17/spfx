@@ -191,20 +191,12 @@ $design-inner-height: 834;
 }
 
 .tableWrapper {
-  overflow-y: auto;
   padding-right: calc((4 / #{$design-width}) * 100cqi);
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   max-height: calc((440 / #{$design-inner-height}) * 100%);
-
-  &::-webkit-scrollbar {
-    width: calc((6 / #{$design-width}) * 100cqi);
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: rgba(245, 124, 0, 0.55);
-    border-radius: calc((3 / #{$design-width}) * 100cqi);
-  }
 }
 
 .tableStateCell {
@@ -243,16 +235,18 @@ $design-inner-height: 834;
 
 .table {
   width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .tableHead {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  flex-shrink: 0;
 
   .tableRow {
     background: $header-bg;
-    border-radius: calc((9 / #{$design-width}) * 100cqi);
+    border-radius: calc((8 / #{$design-width}) * 100cqi);
   }
 }
 
@@ -261,6 +255,18 @@ $design-inner-height: 834;
   flex-direction: column;
   gap: calc((10 / #{$design-width}) * 100cqi);
   margin-top: calc((10 / #{$design-width}) * 100cqi);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: calc((6 / #{$design-width}) * 100cqi);
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(245, 124, 0, 0.55);
+    border-radius: calc((3 / #{$design-width}) * 100cqi);
+  }
 }
 
 .tableRow {

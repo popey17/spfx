@@ -20,13 +20,13 @@ const TableStateRow: React.FC<ITableStateRowProps> = ({ message, variant = 'erro
 );
 
 function useScrollIndicator(
-  tableWrapperRef: React.RefObject<HTMLDivElement>,
+  tableBodyRef: React.RefObject<HTMLDivElement>,
   deps: React.DependencyList
 ): boolean {
   const [showIndicator, setShowIndicator] = React.useState(false);
 
   React.useEffect(() => {
-    const element = tableWrapperRef.current;
+    const element = tableBodyRef.current;
     if (!element) {
       setShowIndicator(false);
       return;
@@ -53,19 +53,19 @@ function useScrollIndicator(
   return showIndicator;
 }
 
-interface ITableWrapperProps {
-  tableWrapperRef: React.RefObject<HTMLDivElement>;
+interface ITableBodyProps {
+  tableBodyRef: React.RefObject<HTMLDivElement>;
 }
 
-interface IIndividualTableProps extends ITableWrapperProps {
+interface IIndividualTableProps extends ITableBodyProps {
   rows: IndividualLeaderboardEntry[];
   status: LeaderboardViewStatus;
 }
 
-const IndividualTable: React.FC<IIndividualTableProps> = ({ rows, status, tableWrapperRef }) => (
+const IndividualTable: React.FC<IIndividualTableProps> = ({ rows, status, tableBodyRef }) => (
   <>
     <p className={styles.subtitle}>TOP 20 RANKING</p>
-    <div className={styles.tableWrapper} ref={tableWrapperRef}>
+    <div className={styles.tableWrapper}>
       <div className={styles.table}>
         <div className={styles.tableHead}>
           <div className={styles.tableRow}>
@@ -75,7 +75,7 @@ const IndividualTable: React.FC<IIndividualTableProps> = ({ rows, status, tableW
             <div className={`${styles.tableCell} ${styles.colXp}`}>XP</div>
           </div>
         </div>
-        <div className={styles.tableBody}>
+        <div className={styles.tableBody} ref={tableBodyRef}>
           {status === 'loading' && (
             <TableStateRow message="LOADING..." variant="loading" />
           )}
@@ -98,15 +98,15 @@ const IndividualTable: React.FC<IIndividualTableProps> = ({ rows, status, tableW
   </>
 );
 
-interface ILobtTableProps extends ITableWrapperProps {
+interface ILobtTableProps extends ITableBodyProps {
   rows: LobtLeaderboardEntry[];
   status: LeaderboardViewStatus;
 }
 
-const LobtTable: React.FC<ILobtTableProps> = ({ rows, status, tableWrapperRef }) => (
+const LobtTable: React.FC<ILobtTableProps> = ({ rows, status, tableBodyRef }) => (
   <>
     <p className={styles.subtitle}>TOP 5 RANKING</p>
-    <div className={styles.tableWrapper} ref={tableWrapperRef}>
+    <div className={styles.tableWrapper}>
       <div className={styles.table}>
         <div className={styles.tableHead}>
           <div className={styles.tableRow}>
@@ -116,7 +116,7 @@ const LobtTable: React.FC<ILobtTableProps> = ({ rows, status, tableWrapperRef })
             <div className={`${styles.tableCell} ${styles.colXpLobt}`}>XP</div>
           </div>
         </div>
-        <div className={styles.tableBody}>
+        <div className={styles.tableBody} ref={tableBodyRef}>
           {status === 'loading' && (
             <TableStateRow message="LOADING..." variant="loading" />
           )}
@@ -156,11 +156,11 @@ const Leaderboard: React.FC<ILeaderboardProps> = ({
   activeTab,
   onTabChange
 }) => {
-  const tableWrapperRef = React.useRef<HTMLDivElement>(null);
+  const tableBodyRef = React.useRef<HTMLDivElement>(null);
 
   const individualRows = data?.individual || [];
   const lobtRows = (data?.lobt || []).slice(0, 5);
-  const showScrollIndicator = useScrollIndicator(tableWrapperRef, [
+  const showScrollIndicator = useScrollIndicator(tableBodyRef, [
     activeTab,
     status,
     individualRows.length,
@@ -209,9 +209,9 @@ const Leaderboard: React.FC<ILeaderboardProps> = ({
           </div>
 
           {activeTab === 'individual' ? (
-            <IndividualTable rows={individualRows} status={status} tableWrapperRef={tableWrapperRef} />
+            <IndividualTable rows={individualRows} status={status} tableBodyRef={tableBodyRef} />
           ) : (
-            <LobtTable rows={lobtRows} status={status} tableWrapperRef={tableWrapperRef} />
+            <LobtTable rows={lobtRows} status={status} tableBodyRef={tableBodyRef} />
           )}
 
           {status === 'ready' && showScrollIndicator && (

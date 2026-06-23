@@ -80,7 +80,7 @@ const LeaderboardContainer: React.FC<ILeaderboardContainerProps> = ({ loadLeader
     return () => {
       cancelled = true;
     };
-  }, [isOpen, loadLeaderboard, activeTab]);
+  }, [isOpen, loadLeaderboard]);
 
   const viewStatus: LeaderboardViewStatus = state.status;
 
