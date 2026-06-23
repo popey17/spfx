@@ -314,6 +314,22 @@ export function getProgressLevelFromSlots(earnedQuestionSlots: boolean[]): numbe
   return MAX_QUESTION_LEVEL;
 }
 
+/** Level to start the next run — campaign uses unearned slots; free mode uses last saved level. */
+export function getResumeLevelFromProgress(
+  earnedQuestionSlots: boolean[],
+  savedLevel: number
+): number {
+  const slots = parseEarnedQuestionSlots(earnedQuestionSlots);
+  const campaignComplete = slots.every((earned) => earned);
+
+  if (!campaignComplete) {
+    return getProgressLevelFromSlots(slots);
+  }
+
+  const normalizedSavedLevel = typeof savedLevel === 'number' && !isNaN(savedLevel) ? savedLevel : 1;
+  return Math.max(1, Math.min(MAX_QUESTION_LEVEL, normalizedSavedLevel || 1));
+}
+
 export function getLevelXpFromSlots(earnedQuestionSlots: boolean[], level: number): number {
   const start = (level - 1) * QUESTIONS_PER_LEVEL;
   let allEarned = true;
@@ -408,7 +424,7 @@ export function followThePathProgressToRecord(
   achievements: GameAchievementData = createDefaultGameAchievementData()
 ): PlayerProgressRecord {
   const earnedQuestionSlots = parseEarnedQuestionSlots(game.earnedQuestionSlots);
-  const level = getProgressLevelFromSlots(earnedQuestionSlots);
+  const level = getResumeLevelFromProgress(earnedQuestionSlots, game.level);
 
   return {
     usersListItemId: ids?.usersListItemId,
@@ -428,7 +444,7 @@ export function followThePathProgressToRecord(
 
 export function buildFollowThePathProgressFromSession(session: GameSessionResult): FollowThePathProgressData {
   const earnedQuestionSlots = parseEarnedQuestionSlots(session.earnedQuestionSlots);
-  const level = getProgressLevelFromSlots(earnedQuestionSlots);
+  const level = getResumeLevelFromProgress(earnedQuestionSlots, session.level);
 
   return {
     highScore: session.highScore,
@@ -451,6 +467,25 @@ export function mergeEarnedQuestionSlots(a: boolean[], b: boolean[]): boolean[] 
   return merged;
 }
 
+function resolveMergedResumeLevel(
+  session: FollowThePathProgressData,
+  server: FollowThePathProgressData | undefined,
+  earnedQuestionSlots: boolean[]
+): number {
+  const freeMode = session.freeModeUnlocked || server?.freeModeUnlocked === true;
+  const campaignComplete = earnedQuestionSlots.every((earned) => earned);
+
+  // Free mode uses session.level as the resume pointer (can reset to 1 after passing level 3).
+  if (freeMode && campaignComplete) {
+    return Math.max(1, Math.min(MAX_QUESTION_LEVEL, session.level));
+  }
+
+  return getResumeLevelFromProgress(
+    earnedQuestionSlots,
+    Math.max(server?.level || 1, session.level)
+  );
+}
+
 /** Combine in-session progress with the latest row from Game1Data before saving. */
 export function mergeFollowThePathProgressForSave(
   session: FollowThePathProgressData,
@@ -468,7 +503,7 @@ export function mergeFollowThePathProgressForSave(
 
   return {
     highScore: Math.max(session.highScore, server.highScore),
-    level: getProgressLevelFromSlots(earnedQuestionSlots),
+    level: resolveMergedResumeLevel(session, server, earnedQuestionSlots),
     levelXp: getTotalEarnedXpFromSlots(earnedQuestionSlots),
     earnedQuestionSlots,
     freeModeUnlocked:
@@ -610,7 +645,7 @@ export function writeFollowThePathProgressToBody(
 ): Record<string, string | number | boolean> {
   const fields = GAME1_DATA_LIST_CONFIG.fields;
   const earnedQuestionSlots = parseEarnedQuestionSlots(game.earnedQuestionSlots);
-  const level = getProgressLevelFromSlots(earnedQuestionSlots);
+  const level = getResumeLevelFromProgress(earnedQuestionSlots, game.level);
   const hearts = resolveDailyHearts(game.heartsRemaining, game.heartsDay);
 
   return {

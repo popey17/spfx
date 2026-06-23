@@ -4,6 +4,7 @@ import {
   createDefaultPlayerProgress,
   createDefaultUserProfile,
   followThePathProgressToRecord,
+  mergeFollowThePathProgressForSave,
   getGame1LevelXpTotals,
   computeUserTotalXp,
   resolveDailyHearts,
@@ -12,6 +13,7 @@ import {
   incrementFollowThePathPlayedInUserGameData,
   USERS_TOTAL_PLAYED_GAME_COUNT_MAX,
   type AchievementSessionUpdate,
+  type FollowThePathProgressData,
   type GameSessionResult,
   type PlayerSession,
   type UserProfileRecord,
@@ -44,7 +46,17 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
   }
 
   public async saveAfterGame(session: GameSessionResult): Promise<void> {
-    const game = buildFollowThePathProgressFromSession(session);
+    const sessionProgress = buildFollowThePathProgressFromSession(session);
+    const serverProgress: FollowThePathProgressData = {
+      highScore: this._record.highScore,
+      level: this._record.level,
+      levelXp: this._record.levelXp,
+      earnedQuestionSlots: this._record.earnedQuestionSlots,
+      freeModeUnlocked: this._record.freeModeUnlocked,
+      heartsRemaining: this._record.heartsRemaining,
+      heartsDay: this._record.heartsDay
+    };
+    const game = mergeFollowThePathProgressForSave(sessionProgress, serverProgress);
     const coinsEarned = Math.max(0, session.coinsCollected);
     const totalCoin = (this._profile?.totalCoin || 0) + coinsEarned;
     const totalCoinEarned = (this._profile?.totalCoinEarned || 0) + coinsEarned;

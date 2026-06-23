@@ -161,6 +161,7 @@ import {
   createDefaultGameAchievementData,
   applyAchievementSessionUpdate,
   getLevelXpFromSlots,
+  getResumeLevelFromProgress,
   getDailyHeartsDayKey,
   resolveDailyHearts,
   type GameAchievementData,
@@ -266,6 +267,7 @@ export class EndlessRunnerGame {
   private _sessionXpByLevel: number[] = [0, 0, 0];
   private _xpEarnedSlotsAtLastSave: boolean[] = createEmptyEarnedQuestionSlots();
   private _xpEarnedSlotsXpBaseline: boolean[] = createEmptyEarnedQuestionSlots();
+  private _savedResumeLevel: number = 1;
   private _sessionProgressSaved: boolean = false;
   private _sessionProgressSaving: boolean = false;
   private _coinsPersistedScore: number = 0;
@@ -1399,12 +1401,14 @@ export class EndlessRunnerGame {
     }
   }
 
-  private _goToMainMenu(): void {
+  private _goToMainMenu(skipProgressSave: boolean = false): void {
     this._closeAudioMenu();
     this._gameOverShowsShop = false;
-    this._savePlayerProgress(true).catch(() => {
-      // Error already logged in _savePlayerProgress.
-    });
+    if (!skipProgressSave) {
+      this._savePlayerProgress(true).catch(() => {
+        // Error already logged in _savePlayerProgress.
+      });
+    }
     this._state = 'waiting';
     this._movement = 0;
     this._clearTouchMovement();
@@ -1628,12 +1632,9 @@ export class EndlessRunnerGame {
     this._explosionFlashes = [];
     this._confettiParticles = [];
     this._screenShakeEndsAt = 0;
-    if (!this._freeModeUnlocked) {
-      this._xpEarnedSlots = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
-      this._xpEarnedSlotsXpBaseline = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
-    }
-    // Campaign and free mode both start at Easy and advance through all 3 levels.
-    this._currentLevel = 1;
+    this._xpEarnedSlots = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
+    this._xpEarnedSlotsXpBaseline = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
+    this._currentLevel = getResumeLevelFromProgress(this._xpEarnedSlotsAtLastSave, this._savedResumeLevel);
     this._allQuestionsComplete = false;
     this._gameSpeedMultiplier = GAME_SPEED_INITIAL;
     this._answeredInLevel = [false, false, false, false];
@@ -2491,16 +2492,22 @@ export class EndlessRunnerGame {
       if (!this._isFreePlaySession && this._xpEarnedSlots.every((earned) => earned)) {
         this._freeModeUnlocked = true;
       }
-      this._savePlayerProgress(true).catch(() => {
+      const freeModeRestartLevel = this._isFreePlaySession ? 1 : undefined;
+      if (freeModeRestartLevel !== undefined) {
+        this._savedResumeLevel = freeModeRestartLevel;
+      }
+      this._savePlayerProgress(true, freeModeRestartLevel).catch(() => {
         // Error already logged in _savePlayerProgress.
       });
-      this._goToMainMenu();
+      this._goToMainMenu(true);
       return;
     }
 
-    this._savePlayerProgress(false).catch(() => {
-      // Error already logged in _savePlayerProgress.
-    });
+    if (!this._isFreePlaySession) {
+      this._savePlayerProgress(false).catch(() => {
+        // Error already logged in _savePlayerProgress.
+      });
+    }
 
     this._currentLevel += 1;
     this._answeredInLevel = [false, false, false, false];
@@ -2515,6 +2522,12 @@ export class EndlessRunnerGame {
     this._nextShieldSpawnDelayMs = this._randomBetween(SHIELD_SPAWN_MIN_MS, SHIELD_SPAWN_MAX_MS);
     this._spawnClockMs = 0;
     this._scheduleSpawns(0);
+
+    if (this._isFreePlaySession) {
+      this._savePlayerProgress(false).catch(() => {
+        // Error already logged in _savePlayerProgress.
+      });
+    }
 
     if (LEVEL_INTRO.enabled && LEVEL_INTRO.showOnLevelAdvance) {
       this._startLevelIntro();
@@ -3783,6 +3796,7 @@ export class EndlessRunnerGame {
     }
 
     this._xpEarnedSlotsAtLastSave = this._copyEarnedQuestionSlots(this._xpEarnedSlots);
+    this._savedResumeLevel = record.level || 1;
 
     if (!this._freeModeUnlocked && this._xpEarnedSlots.every((earned) => earned)) {
       this._freeModeUnlocked = true;
@@ -3820,7 +3834,7 @@ export class EndlessRunnerGame {
       });
   }
 
-  private _savePlayerProgress(endOfSession: boolean): Promise<void> {
+  private _savePlayerProgress(endOfSession: boolean, resumeLevelOverride?: number): Promise<void> {
     if (this._sessionProgressSaving || !this._progressService) {
       return Promise.resolve();
     }
@@ -3838,6 +3852,8 @@ export class EndlessRunnerGame {
       xpGainedThisSession += this._sessionXpByLevel[i];
     }
 
+    const resumeLevel = resumeLevelOverride ?? this._getSavedResumeLevel();
+
     this._sessionProgressSaving = true;
 
     const achievementUpdate = {
@@ -3848,7 +3864,7 @@ export class EndlessRunnerGame {
       .saveAfterGame({
         coinsCollected: coinDelta,
         highScore: newHighScore,
-        level: this._getProgressLevel(),
+        level: resumeLevel,
         xpGainedInLevel: this._getLevelXpEarned(),
         xpGainedThisSession,
         earnedQuestionSlots: [...this._xpEarnedSlots],
@@ -3862,6 +3878,7 @@ export class EndlessRunnerGame {
         this._totalCoins += coinDelta;
         this._xpEarnedSlotsAtLastSave = this._copyEarnedQuestionSlots(this._xpEarnedSlots);
         this._xpEarnedSlotsXpBaseline = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
+        this._savedResumeLevel = resumeLevel;
         if (coinDelta > 0) {
           this._achievementData = applyAchievementSessionUpdate(this._achievementData, achievementUpdate);
         }
@@ -3927,6 +3944,20 @@ export class EndlessRunnerGame {
     }
 
     return MAX_QUESTION_LEVEL;
+  }
+
+  /** Level written to Game1Data — current run level in free mode, campaign progress otherwise. */
+  private _getSavedResumeLevel(): number {
+    if (this._freeModeUnlocked) {
+      // Free mode: after passing the advanced (level 3) run, next session starts from level 1.
+      if (this._state === 'levelComplete' && this._currentLevel >= MAX_QUESTION_LEVEL) {
+        return 1;
+      }
+
+      return this._currentLevel;
+    }
+
+    return this._getProgressLevel();
   }
 
   private _hasRemainingQuestionsInCurrentLevel(): boolean {
