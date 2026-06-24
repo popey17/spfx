@@ -3037,6 +3037,15 @@ export class EndlessRunnerGame {
     };
   }
 
+  private _getLevelCompleteDescriptionHeight(): number {
+    return this._measureWrappedTextHeight(
+      LEVEL_COMPLETE.descriptionText(this._currentLevel),
+      s(LEVEL_COMPLETE.titleMaxWidth),
+      s(LEVEL_COMPLETE.titleLineHeight),
+      menuFont(LEVEL_COMPLETE.titleFontSize)
+    );
+  }
+
   private _getLevelCompleteLayout(): {
     centerX: number;
     starY: number;
@@ -3049,7 +3058,7 @@ export class EndlessRunnerGame {
     const stackShift = s(LEVEL_COMPLETE.stackOffsetY);
 
     const starHeight = s(LEVEL_COMPLETE.starSize);
-    const titleHeight = s(LEVEL_COMPLETE.titleFontSize) * 1.2;
+    const titleHeight = this._getLevelCompleteDescriptionHeight();
     const headlineHeight = s(LEVEL_COMPLETE.headlineFontSize) * 1.15;
     const rewardsHeight = s(LEVEL_COMPLETE.rewardsFontSize) * 1.3;
 
@@ -3168,9 +3177,16 @@ export class EndlessRunnerGame {
 
     this._ctx.textAlign = 'center';
     this._ctx.textBaseline = 'top';
-    this._ctx.font = menuFont(LEVEL_COMPLETE.titleFontSize);
-    this._ctx.fillStyle = LEVEL_COMPLETE.titleColor;
-    this._ctx.fillText(LEVEL_COMPLETE.titleText, layout.centerX, layout.titleY);
+    this._drawWrappedText(
+      LEVEL_COMPLETE.descriptionText(this._currentLevel),
+      layout.centerX,
+      layout.titleY,
+      s(LEVEL_COMPLETE.titleMaxWidth),
+      s(LEVEL_COMPLETE.titleLineHeight),
+      menuFont(LEVEL_COMPLETE.titleFontSize),
+      LEVEL_COMPLETE.titleColor,
+      'center'
+    );
 
     this._ctx.font = menuFont(LEVEL_COMPLETE.headlineFontSize);
     this._ctx.fillStyle = LEVEL_COMPLETE.headlineColor;

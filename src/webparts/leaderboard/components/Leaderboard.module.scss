@@ -24,7 +24,7 @@ $design-inner-height: 834;
 }
 
 .leaderboardRoot {
-  --lb-pad-top: clamp(48px, 8vh, 80px);
+  --lb-pad-top: 95px;
   --lb-pad-bottom: clamp(16px, 3vh, 32px);
   box-sizing: border-box;
   position: fixed;

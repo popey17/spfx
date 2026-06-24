@@ -507,21 +507,40 @@ export const LEVEL_INTRO = {
 // LEVEL COMPLETE — congrats popup when all questions in a level are answered
 // Uses the same MENU_PANEL frame as welcome / question screens
 // =============================================================================
+const LEVEL_COMPLETE_COPY = [
+  {
+    description: "You've cleared the first checkpoint.",
+    celebration: 'Great Start!'
+  },
+  {
+    description: "The risks are getting more complex, but you're staying on course.",
+    celebration: 'Awesome!'
+  },
+  {
+    description: 'You stayed the course & took ownership when it mattered!',
+    celebration: 'Congratulations!'
+  }
+] as const;
+
 export const LEVEL_COMPLETE = {
   /** Nudge entire content stack up/down (negative = higher). */
   stackOffsetY: 0,
   starSize: 60,
   starGapBelow: 20,
-  titleText: 'CONGRATULATIONS',
-  titleFontSize: 16,
-  titleColor: '#FFFFFF',
-  titleGapBelow: 10,
-  headlineText: (level: number): string => {
-    const names = ['EASY', 'INTERMEDIATE', 'ADVANCED'] as const;
-    const index = Math.max(0, Math.min(level - 1, names.length - 1));
-    return 'YOU COMPLETED THE ' + names[index] + ' LEVEL';
+  descriptionText: (level: number): string => {
+    const index = Math.max(0, Math.min(level - 1, LEVEL_COMPLETE_COPY.length - 1));
+    return LEVEL_COMPLETE_COPY[index].description;
   },
-  headlineFontSize: 18,
+  titleFontSize: 16,
+  titleMaxWidth: 900,
+  titleLineHeight: 22,
+  titleColor: 'rgba(255, 255, 255, 0.9)',
+  titleGapBelow: 12,
+  headlineText: (level: number): string => {
+    const index = Math.max(0, Math.min(level - 1, LEVEL_COMPLETE_COPY.length - 1));
+    return LEVEL_COMPLETE_COPY[index].celebration;
+  },
+  headlineFontSize: 32,
   headlineColor: '#FFFFFF',
   headlineGapBelow: 16,
   rewardsFontSize: 18,
