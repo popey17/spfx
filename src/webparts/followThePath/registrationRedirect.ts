@@ -1,8 +1,21 @@
-export const REGISTER_PAGE_URL =
-  'https://clickrmedia.sharepoint.com/sites/trc-central/SitePages/Register.aspx';
+export const REGISTER_PAGE_URL = 'Register.aspx';
 
-export const HOME_PAGE_URL =
-  'https://clickrmedia.sharepoint.com/sites/trc-central/?env=WebView';
+export const HOME_PAGE_URL = 'Home.aspx';
+
+function resolvePageUrl(pagePath: string, params: URLSearchParams): string {
+  if (typeof window === 'undefined') {
+    const query = params.toString();
+    const fallback = `SitePages/${pagePath}`;
+    return query ? `${fallback}?${query}` : fallback;
+  }
+
+  const url = new URL(pagePath, window.location.href);
+  const query = params.toString();
+  if (query) {
+    url.search = query;
+  }
+  return url.toString();
+}
 
 function parseEmailParam(raw: string | undefined): string | undefined {
   if (!raw) {
@@ -77,14 +90,21 @@ export function buildRegisterPageUrl(email: string = ''): string {
   params.delete('noredirect');
   params.set('env', 'WebView');
 
-  const query = params.toString();
-  return query ? `${REGISTER_PAGE_URL}?${query}` : REGISTER_PAGE_URL;
+  return resolvePageUrl(REGISTER_PAGE_URL, params);
 }
 
 export function redirectToRegisterPage(email: string = ''): void {
   window.location.assign(buildRegisterPageUrl(email));
 }
 
+/** Build home page URL with all query params from the current page. */
+export function buildHomePageUrl(): string {
+  const params = new URLSearchParams(
+    typeof window !== 'undefined' ? window.location.search : ''
+  );
+  return resolvePageUrl(HOME_PAGE_URL, params);
+}
+
 export function redirectToHomePage(): void {
-  window.location.assign(HOME_PAGE_URL);
+  window.location.assign(buildHomePageUrl());
 }
