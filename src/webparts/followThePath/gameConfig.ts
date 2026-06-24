@@ -177,6 +177,25 @@ export const WELCOME_MENU = {
   speechBubbleOffsetY: 70,
   speechBubbleWidth: 150,
 
+  /** Heart refill countdown pill shown at the top-right of the welcome screen. */
+  heartRefillCounter: {
+    offsetY: -8,
+    marginX: 40,
+    height: 24,
+    paddingX: 8,
+    heartIconSize: 12,
+    labelText: 'Refill in',
+    labelFontSize: 10,
+    labelColor: 'rgba(255, 255, 255, 0.75)',
+    timerFontSize: 10,
+    timerColor: '#FFFFFF',
+    backgroundColor: 'rgba(12, 14, 20, 0.92)',
+    borderColor: 'rgba(200, 170, 110, 0.55)',
+    borderWidth: 1,
+    gapAfterHeart: 8,
+    gapAfterLabel: 6
+  },
+
   /** First-time / in-progress players (free mode not unlocked). */
   standard: {
     titleOffsetY: 80,
@@ -211,10 +230,10 @@ export const HOME_BUTTON = {
   marginX: 15,
   marginY: 15,
   iconSize: 30,
-  fontSize: 18,
+  fontSize: 14,
   gap: 10,
   hitPadding: 5,
-  label: 'HOME'
+  label: 'Back to Home'
 };
 
 export const BACK_BTN_NATIVE = { width: 160, height: 160 };
@@ -494,8 +513,12 @@ export const LEVEL_COMPLETE = {
   titleFontSize: 16,
   titleColor: '#FFFFFF',
   titleGapBelow: 10,
-  headlineText: 'YOU MADE IT!',
-  headlineFontSize: 32,
+  headlineText: (level: number): string => {
+    const names = ['EASY', 'INTERMEDIATE', 'ADVANCED'] as const;
+    const index = Math.max(0, Math.min(level - 1, names.length - 1));
+    return 'YOU COMPLETED THE ' + names[index] + ' LEVEL';
+  },
+  headlineFontSize: 18,
   headlineColor: '#FFFFFF',
   headlineGapBelow: 16,
   rewardsFontSize: 18,

@@ -167,6 +167,7 @@ import {
   type GameAchievementData,
   type PlayerProgressRecord
 } from './playerProgressTypes';
+import { formatCountdownHms, getMsUntilNextDailyHeartReset } from './gameDateContext';
 import { redirectToHomePage } from './registrationRedirect';
 
 
@@ -3172,7 +3173,7 @@ export class EndlessRunnerGame {
 
     this._ctx.font = menuFont(LEVEL_COMPLETE.headlineFontSize);
     this._ctx.fillStyle = LEVEL_COMPLETE.headlineColor;
-    this._ctx.fillText(LEVEL_COMPLETE.headlineText, layout.centerX, layout.headlineY);
+    this._ctx.fillText(LEVEL_COMPLETE.headlineText(this._currentLevel), layout.centerX, layout.headlineY);
 
     this._drawLevelCompleteRewards(layout.centerX, layout.rewardsY);
 
@@ -5205,6 +5206,55 @@ export class EndlessRunnerGame {
     this._drawSpeechBubble(bubbleX, bubbleY, bubbleWidth);
   }
 
+  private _drawHeartRefillCounter(
+    panel: { x: number; y: number; width: number; height: number },
+    contentY: number
+  ): void {
+    const cfg = WELCOME_MENU.heartRefillCounter;
+    const heartSize = s(cfg.heartIconSize);
+    const pillHeight = s(cfg.height);
+    const paddingX = s(cfg.paddingX);
+    const gapAfterHeart = s(cfg.gapAfterHeart);
+    const gapAfterLabel = s(cfg.gapAfterLabel);
+    const marginX = s(cfg.marginX);
+    const timerText = formatCountdownHms(getMsUntilNextDailyHeartReset());
+
+    this._ctx.font = menuFont(cfg.labelFontSize);
+    const labelWidth = this._ctx.measureText(cfg.labelText).width;
+
+    this._ctx.font = 'bold ' + menuFont(cfg.timerFontSize);
+    const timerWidth = this._ctx.measureText(timerText).width;
+
+    const contentWidth = heartSize + gapAfterHeart + labelWidth + gapAfterLabel + timerWidth;
+    const pillWidth = contentWidth + paddingX * 2;
+    const pillX = panel.x + panel.width - marginX - pillWidth;
+    const y = contentY + s(cfg.offsetY);
+
+    this._ctx.fillStyle = cfg.backgroundColor;
+    this._ctx.strokeStyle = cfg.borderColor;
+    this._ctx.lineWidth = s(cfg.borderWidth);
+    this._roundRectPath(pillX, y, pillWidth, pillHeight, pillHeight / 2);
+    this._ctx.fill();
+    this._ctx.stroke();
+
+    let x = pillX + paddingX;
+    const centerY = y + pillHeight / 2;
+
+    this._drawHeart(x, centerY - heartSize / 2, true, heartSize);
+    x += heartSize + gapAfterHeart;
+
+    this._ctx.textAlign = 'left';
+    this._ctx.textBaseline = 'middle';
+    this._ctx.font = menuFont(cfg.labelFontSize);
+    this._ctx.fillStyle = cfg.labelColor;
+    this._ctx.fillText(cfg.labelText, x, centerY);
+    x += labelWidth + gapAfterLabel;
+
+    this._ctx.font = 'bold ' + menuFont(cfg.timerFontSize);
+    this._ctx.fillStyle = cfg.timerColor;
+    this._ctx.fillText(timerText, x, centerY);
+  }
+
   private _drawWelcomeScreen(timestamp: number): void {
     const panel = this._getWelcomePanelBounds();
     const content = this._getMenuContentBounds(panel);
@@ -5212,6 +5262,8 @@ export class EndlessRunnerGame {
     const menuLayout = getWelcomeMenuLayout(this._freeModeUnlocked);
 
     this._drawMenuPanelBackground(panel);
+
+    this._drawHeartRefillCounter(panel, content.y);
 
     this._ctx.fillStyle = '#FFFFFF';
     this._ctx.textAlign = 'center';

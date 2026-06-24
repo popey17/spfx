@@ -73,6 +73,35 @@ export function getDailyHeartsDayKey(fallbackNow: Date = new Date()): string {
   return formatCalendarDateInGameTimezone(fallbackNow);
 }
 
+/** Milliseconds until the next daily heart reset (midnight in the game timezone). */
+export function getMsUntilNextDailyHeartReset(fallbackNow: Date = new Date()): number {
+  const now = _initialized ? getSharePointReferenceNow() : fallbackNow;
+  const timeString = new Intl.DateTimeFormat('en-GB', {
+    timeZone: DAILY_HEARTS.timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(now);
+  const segments = timeString.split(':');
+  const hour = parseInt(segments[0] || '0', 10) % 24;
+  const minute = parseInt(segments[1] || '0', 10);
+  const second = parseInt(segments[2] || '0', 10);
+  const msElapsedToday = ((hour * 60 + minute) * 60 + second) * 1000;
+
+  return 24 * 60 * 60 * 1000 - msElapsedToday;
+}
+
+export function formatCountdownHms(remainingMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value: number): string => (value < 10 ? '0' + value : String(value));
+
+  return pad(hours) + ':' + pad(minutes) + ':' + pad(seconds);
+}
+
 /** @internal Test helper */
 export function resetGameDateContextForTests(): void {
   _serverTimeSkewMs = 0;
