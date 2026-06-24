@@ -51,6 +51,7 @@ import {
   s,
   menuFont,
   MENU_PANEL,
+  MENU_BG_NATIVE,
   WELCOME_MENU,
   getWelcomeMenuLayout,
   HOME_BUTTON,
@@ -4137,14 +4138,32 @@ export class EndlessRunnerGame {
     ctx.fillRect(0, 0, width, height);
   }
 
+  private _getMenuPanelBackgroundBounds(panel: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }): { x: number; y: number; width: number; height: number } {
+    const bgWidth = MENU_BG_NATIVE.width;
+    const bgHeight = MENU_BG_NATIVE.height;
+
+    return {
+      x: panel.x + (panel.width - bgWidth) / 2,
+      y: panel.y + (panel.height - bgHeight) / 2,
+      width: bgWidth,
+      height: bgHeight
+    };
+  }
+
   private _drawMenuPanelBackground(panel: { x: number; y: number; width: number; height: number }): void {
     if (this._assets?.menuBackground) {
+      const background = this._getMenuPanelBackgroundBounds(panel);
       this._ctx.drawImage(
         this._assets.menuBackground,
-        panel.x,
-        panel.y,
-        panel.width,
-        panel.height
+        background.x,
+        background.y,
+        background.width,
+        background.height
       );
       return;
     }

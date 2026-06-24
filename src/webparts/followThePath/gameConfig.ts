@@ -146,6 +146,9 @@ export const MENU_PANEL = {
   paddingBottom: 99,
 };
 
+/** Full menu background asset size (includes drop-shadow padding around the panel frame). */
+export const MENU_BG_NATIVE = { width: 1568, height: 918 };
+
 // =============================================================================
 // WELCOME MENU LAYOUT — adjust font sizes and element positions here
 // All values are 1920×1080 design pixels unless marked (scaled)
