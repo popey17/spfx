@@ -559,8 +559,12 @@ export const LEVEL_COMPLETE = {
   rewardsGapAboveProceedButton: 28,
   proceedButtonText: 'PROCEED',
   playAgainButtonText: 'PLAY AGAIN',
+  mainMenuButtonText: 'MAIN MENU',
   proceedButtonWidth: 300,
   proceedButtonHeight: 88,
+  finalLevelButtonWidth: 280,
+  finalLevelButtonHeight: 88,
+  finalLevelButtonGap: 24,
   /** Distance from panel content bottom to PROCEED button bottom. */
   proceedButtonBottomOffset: 50,
   proceedButtonFontSize: 18,

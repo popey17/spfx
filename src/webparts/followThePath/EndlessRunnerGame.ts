@@ -764,7 +764,7 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'levelComplete') {
-      return 1;
+      return this._isFinalLevelCompleteScreen() ? 2 : 1;
     }
 
     if (this._state === 'question') {
@@ -796,7 +796,8 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'levelComplete') {
-      return index === 0 ? this._getLevelCompleteProceedButtonBounds() : undefined;
+      const bounds = this._getLevelCompleteButtonBounds(index);
+      return bounds.width > 0 && bounds.height > 0 ? bounds : undefined;
     }
 
     if (this._state === 'question') {
@@ -917,7 +918,16 @@ export class EndlessRunnerGame {
     }
 
     if (this._state === 'levelComplete') {
-      this._proceedFromLevelComplete();
+      if (this._isFinalLevelCompleteScreen()) {
+        if (index === 0) {
+          this._playAgainFromLevelComplete();
+        } else if (index === 1) {
+          this._goToMainMenuFromLevelComplete();
+        }
+      } else {
+        this._proceedFromLevelComplete();
+      }
+
       return;
     }
 
@@ -1233,10 +1243,16 @@ export class EndlessRunnerGame {
 
     if (this._state === 'countdown' || this._state === 'levelIntro' || this._state === 'levelComplete') {
       if (this._state === 'levelComplete') {
-        if (this._isPointInRect(point.x, point.y, this._getLevelCompleteProceedButtonBounds())) {
-          this._lastCanvasPressAt = now;
-          this._proceedFromLevelComplete();
-          return true;
+        const count = this._getMenuButtonCount();
+
+        for (let i = 0; i < count; i++) {
+          const bounds = this._getLevelCompleteButtonBounds(i);
+
+          if (bounds.width > 0 && bounds.height > 0 && this._isPointInRect(point.x, point.y, bounds)) {
+            this._lastCanvasPressAt = now;
+            this._activateMenuButton(i);
+            return true;
+          }
         }
       }
       return false;
@@ -2476,32 +2492,56 @@ export class EndlessRunnerGame {
     return this._getLevelXpRewardForLevel(this._currentLevel);
   }
 
-  private _getLevelCompleteProceedButtonText(): string {
-    if (this._currentLevel >= MAX_QUESTION_LEVEL) {
-      return LEVEL_COMPLETE.playAgainButtonText;
-    }
-
-    return LEVEL_COMPLETE.proceedButtonText;
+  private _isFinalLevelCompleteScreen(): boolean {
+    return this._state === 'levelComplete' && this._currentLevel >= MAX_QUESTION_LEVEL;
   }
 
-  private _proceedFromLevelComplete(): void {
-    if (this._state !== 'levelComplete') {
+  private _finalizeLevelThreeCampaignCompletion(): void {
+    this._allQuestionsComplete = true;
+
+    if (!this._isFreePlaySession && this._xpEarnedSlots.every((earned) => earned)) {
+      this._freeModeUnlocked = true;
+    }
+
+    this._savedResumeLevel = 1;
+    this._xpEarnedSlotsAtLastSave = this._copyEarnedQuestionSlots(this._xpEarnedSlots);
+    this._xpEarnedSlotsXpBaseline = this._copyEarnedQuestionSlots(this._xpEarnedSlotsAtLastSave);
+  }
+
+  private _goToMainMenuFromLevelComplete(): void {
+    if (!this._isFinalLevelCompleteScreen()) {
       return;
     }
 
-    if (this._currentLevel >= MAX_QUESTION_LEVEL) {
-      this._allQuestionsComplete = true;
-      if (!this._isFreePlaySession && this._xpEarnedSlots.every((earned) => earned)) {
-        this._freeModeUnlocked = true;
-      }
-      const freeModeRestartLevel = this._isFreePlaySession ? 1 : undefined;
-      if (freeModeRestartLevel !== undefined) {
-        this._savedResumeLevel = freeModeRestartLevel;
-      }
-      this._savePlayerProgress(true, freeModeRestartLevel).catch(() => {
-        // Error already logged in _savePlayerProgress.
-      });
+    this._finalizeLevelThreeCampaignCompletion();
+    this._savePlayerProgress(true, 1).catch(() => {
+      // Error already logged in _savePlayerProgress.
+    });
+    this._goToMainMenu(true);
+  }
+
+  private _playAgainFromLevelComplete(): void {
+    if (!this._isFinalLevelCompleteScreen()) {
+      return;
+    }
+
+    this._finalizeLevelThreeCampaignCompletion();
+    this._savePlayerProgress(true, 1).catch(() => {
+      // Error already logged in _savePlayerProgress.
+    });
+    this._refreshDailyHearts();
+
+    if (this._dailyHeartsRemaining <= 0) {
       this._goToMainMenu(true);
+      this._openShop();
+      return;
+    }
+
+    this._startGame();
+  }
+
+  private _proceedFromLevelComplete(): void {
+    if (this._state !== 'levelComplete' || this._isFinalLevelCompleteScreen()) {
       return;
     }
 
@@ -3025,9 +3065,34 @@ export class EndlessRunnerGame {
     });
   }
 
-  private _getLevelCompleteProceedButtonBounds(): { x: number; y: number; width: number; height: number } {
+  private _getLevelCompleteButtonBounds(index: number): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } {
     const panel = this._getMenuPanelBounds();
     const content = this._getMenuContentBounds(panel);
+
+    if (this._isFinalLevelCompleteScreen()) {
+      const buttonWidth = LEVEL_COMPLETE.finalLevelButtonWidth;
+      const buttonHeight = LEVEL_COMPLETE.finalLevelButtonHeight;
+      const gap = LEVEL_COMPLETE.finalLevelButtonGap;
+      const totalWidth = buttonWidth * 2 + gap;
+      const startX = panel.x + (panel.width - totalWidth) / 2;
+      const y = content.bottom - buttonHeight - LEVEL_COMPLETE.proceedButtonBottomOffset;
+
+      return {
+        x: startX + index * (buttonWidth + gap),
+        y,
+        width: buttonWidth,
+        height: buttonHeight
+      };
+    }
+
+    if (index !== 0) {
+      return { x: 0, y: 0, width: 0, height: 0 };
+    }
 
     return {
       x: panel.x + (panel.width - LEVEL_COMPLETE.proceedButtonWidth) / 2,
@@ -3054,7 +3119,7 @@ export class EndlessRunnerGame {
     rewardsY: number;
   } {
     const centerX = DESIGN_WIDTH / 2;
-    const button = this._getLevelCompleteProceedButtonBounds();
+    const button = this._getLevelCompleteButtonBounds(0);
     const stackShift = s(LEVEL_COMPLETE.stackOffsetY);
 
     const starHeight = s(LEVEL_COMPLETE.starSize);
@@ -3194,13 +3259,30 @@ export class EndlessRunnerGame {
 
     this._drawLevelCompleteRewards(layout.centerX, layout.rewardsY);
 
-    this._drawMenuButton(
-      this._getLevelCompleteProceedButtonBounds(),
-      this._getLevelCompleteProceedButtonText(),
-      LEVEL_COMPLETE.proceedButtonFontSize,
-      timestamp,
-      this._getMenuButtonInteraction(0)
-    );
+    if (this._isFinalLevelCompleteScreen()) {
+      this._drawMenuButton(
+        this._getLevelCompleteButtonBounds(0),
+        LEVEL_COMPLETE.playAgainButtonText,
+        LEVEL_COMPLETE.proceedButtonFontSize,
+        timestamp,
+        this._getMenuButtonInteraction(0)
+      );
+      this._drawMenuButton(
+        this._getLevelCompleteButtonBounds(1),
+        LEVEL_COMPLETE.mainMenuButtonText,
+        LEVEL_COMPLETE.proceedButtonFontSize,
+        timestamp,
+        this._getMenuButtonInteraction(1)
+      );
+    } else {
+      this._drawMenuButton(
+        this._getLevelCompleteButtonBounds(0),
+        LEVEL_COMPLETE.proceedButtonText,
+        LEVEL_COMPLETE.proceedButtonFontSize,
+        timestamp,
+        this._getMenuButtonInteraction(0)
+      );
+    }
 
     this._drawLevelCompleteMascot(panel);
   }
