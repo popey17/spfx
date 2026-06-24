@@ -4144,8 +4144,10 @@ export class EndlessRunnerGame {
     width: number;
     height: number;
   }): { x: number; y: number; width: number; height: number } {
-    const bgWidth = MENU_BG_NATIVE.width;
-    const bgHeight = MENU_BG_NATIVE.height;
+    const widthScale = panel.width / MENU_PANEL.width;
+    const heightScale = panel.height / MENU_PANEL.height;
+    const bgWidth = MENU_BG_NATIVE.width * widthScale;
+    const bgHeight = MENU_BG_NATIVE.height * heightScale;
 
     return {
       x: panel.x + (panel.width - bgWidth) / 2,

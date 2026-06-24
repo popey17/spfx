@@ -24,6 +24,8 @@ $design-inner-height: 834;
 }
 
 .leaderboardRoot {
+  --lb-pad-top: clamp(48px, 8vh, 80px);
+  --lb-pad-bottom: clamp(16px, 3vh, 32px);
   box-sizing: border-box;
   position: fixed;
   inset: 0;
@@ -31,7 +33,7 @@ $design-inner-height: 834;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(12px, 2.5vw, 24px) clamp(8px, 2vw, 16px);
+  padding: var(--lb-pad-top) clamp(8px, 2vw, 16px) var(--lb-pad-bottom);
   background: rgba(0, 0, 0, 0.4);
   font-family: $font-stack;
   color: $text;
@@ -55,10 +57,10 @@ $design-inner-height: 834;
   aspect-ratio: #{$design-width} / #{$design-height};
   width: min(
     calc(100vw - 32px),
-    calc((100dvh - 48px) * #{$design-width} / #{$design-height}),
+    calc((100dvh - var(--lb-pad-top) - var(--lb-pad-bottom)) * #{$design-width} / #{$design-height}),
     1369px
   );
-  max-height: calc(100dvh - 48px);
+  max-height: calc(100dvh - var(--lb-pad-top) - var(--lb-pad-bottom));
 }
 
 .panel__inner {
