@@ -285,6 +285,7 @@ export class EndlessRunnerGame {
   private _answerFeedbackTimerId: number | undefined;
   private _screenShakeEndsAt: number = 0;
   private _countdownEndsAt: number = 0;
+  private _resetQuestionTimerOnResume: boolean = true;
   private _levelIntroEndsAt: number = 0;
   private _levelStartScore: number = 0;
   private _ghostModeEndsAt: number = 0;
@@ -1398,7 +1399,7 @@ export class EndlessRunnerGame {
       this._pendingPizzaConfetti = true;
     }
 
-    this._startCountdown();
+    this._startCountdown(false);
   }
 
   private _togglePause(): void {
@@ -1614,7 +1615,7 @@ export class EndlessRunnerGame {
     this._movement = 0;
     this._clearTouchMovement();
     this._activateGhostMode(performance.now());
-    this._startCountdown();
+    this._startCountdown(false);
   }
 
   private _refreshShopCoinBalance(): void {
@@ -2587,7 +2588,8 @@ export class EndlessRunnerGame {
     this._displayCanvas.focus();
   }
 
-  private _startCountdown(): void {
+  private _startCountdown(resetQuestionTimer: boolean = true): void {
+    this._resetQuestionTimerOnResume = resetQuestionTimer;
     this._state = 'countdown';
     this._movement = 0;
     this._clearTouchMovement();
@@ -2608,7 +2610,12 @@ export class EndlessRunnerGame {
     }
 
     this._state = 'playing';
-    this._questionTimerMs = 0;
+
+    if (this._resetQuestionTimerOnResume) {
+      this._questionTimerMs = 0;
+    }
+
+    this._resetQuestionTimerOnResume = true;
     this._lastTimestamp = 0;
     this._displayCanvas.focus();
   }
