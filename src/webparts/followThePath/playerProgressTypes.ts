@@ -32,7 +32,7 @@ export { getDailyHeartsDayKey, parseDateOverrideFromUrl } from './gameDateContex
  * | MiniQuestXP | MasteryQuestXP |
  * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
  * | LeaderBoardData (JSON — individual top 50 / LOBT top 10 status; synced on leaderboard open) |
- * | GameProgress (JSON — per-game stats keyed by game id, e.g. followThePath.played) |
+ * | GameProgress (JSON — per-game stats keyed by game id, e.g. followThePath.played, correctAnswers, passedLevels, completeTheGame, flawlessRun, isReplayed) |
  *
  * TotalCoin — spendable balance (increases on earn, decreases on spend e.g. shop).
  * TotalCoinEarned — lifetime coins earned; only ever increases.
@@ -734,31 +734,142 @@ export function parseUserGameDataJson(raw: string | undefined): Record<string, u
 }
 
 /** Increment followThePath.played in Users list GameProgress without touching other games. */
-export function incrementFollowThePathPlayedInUserGameData(raw: string | undefined): string {
+export interface FollowThePathGameProgressUpdate {
+  incrementPlayed?: boolean;
+  incrementCorrectAnswers?: number;
+  markLevelPassed?: number;
+  markCompleteTheGame?: boolean;
+  markFlawlessRun?: boolean;
+  isReplayed?: boolean;
+}
+
+function normalizePassedLevels(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const levels: number[] = [];
+
+  for (let i = 0; i < value.length; i++) {
+    const level = Math.floor(toNumber(value[i]));
+
+    if (level >= 1 && level <= MAX_QUESTION_LEVEL && levels.indexOf(level) === -1) {
+      levels.push(level);
+    }
+  }
+
+  return levels.sort((left, right) => left - right);
+}
+
+function readFollowThePathGameProgress(data: Record<string, unknown>): Record<string, unknown> {
+  const existing = data.followThePath;
+
+  if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+    return { ...(existing as Record<string, unknown>) };
+  }
+
+  return {};
+}
+
+export function updateFollowThePathInUserGameData(
+  raw: string | undefined,
+  update: FollowThePathGameProgressUpdate
+): string {
   const data = parseUserGameDataJson(raw);
-  const existingFollowThePath =
-    data.followThePath &&
-    typeof data.followThePath === 'object' &&
-    !Array.isArray(data.followThePath)
-      ? { ...(data.followThePath as Record<string, unknown>) }
-      : {};
-  const played = Math.max(0, toNumber(existingFollowThePath.played)) + 1;
+  const followThePath = readFollowThePathGameProgress(data);
+
+  if (update.incrementPlayed) {
+    followThePath.played = Math.max(0, toNumber(followThePath.played)) + 1;
+  }
+
+  if (update.incrementCorrectAnswers && update.incrementCorrectAnswers > 0) {
+    followThePath.correctAnswers =
+      Math.max(0, toNumber(followThePath.correctAnswers)) + update.incrementCorrectAnswers;
+  }
+
+  if (update.markLevelPassed && update.markLevelPassed >= 1 && update.markLevelPassed <= MAX_QUESTION_LEVEL) {
+    const passedLevels = normalizePassedLevels(followThePath.passedLevels);
+
+    if (passedLevels.indexOf(update.markLevelPassed) === -1) {
+      passedLevels.push(update.markLevelPassed);
+      passedLevels.sort((left, right) => left - right);
+    }
+
+    followThePath.passedLevels = passedLevels;
+  }
+
+  if (update.markCompleteTheGame) {
+    followThePath.completeTheGame = true;
+  }
+
+  if (update.markFlawlessRun) {
+    followThePath.flawlessRun = true;
+  }
+
+  if (update.isReplayed !== undefined) {
+    followThePath.isReplayed = update.isReplayed;
+  }
 
   return JSON.stringify({
     ...data,
-    followThePath: {
-      ...existingFollowThePath,
-      played
-    }
+    followThePath
   });
 }
 
-export function writeUserFollowThePathPlayedIncrementBody(
-  rawGameProgressJson: string | undefined
+export function incrementFollowThePathPlayedInUserGameData(raw: string | undefined): string {
+  return updateFollowThePathInUserGameData(raw, { incrementPlayed: true });
+}
+
+export function writeUserFollowThePathGameProgressBody(
+  rawGameProgressJson: string | undefined,
+  update: FollowThePathGameProgressUpdate
 ): Record<string, string> {
   return {
-    [USERS_LIST_CONFIG.fields.gameProgress]: incrementFollowThePathPlayedInUserGameData(rawGameProgressJson)
+    [USERS_LIST_CONFIG.fields.gameProgress]: updateFollowThePathInUserGameData(rawGameProgressJson, update)
   };
+}
+
+export function buildFollowThePathGameProgressUpdateFromSession(
+  update: AchievementSessionUpdate
+): FollowThePathGameProgressUpdate | undefined {
+  const progressUpdate: FollowThePathGameProgressUpdate = {};
+
+  if (update.incrementPlayCount) {
+    progressUpdate.incrementPlayed = true;
+  }
+
+  if (update.incrementCorrectAnswers && update.incrementCorrectAnswers > 0) {
+    progressUpdate.incrementCorrectAnswers = update.incrementCorrectAnswers;
+  }
+
+  if (update.markCompleteTheGame) {
+    progressUpdate.markCompleteTheGame = true;
+  }
+
+  if (update.markLevelPassed && update.markLevelPassed >= 1 && update.markLevelPassed <= MAX_QUESTION_LEVEL) {
+    progressUpdate.markLevelPassed = update.markLevelPassed;
+  }
+
+  if (update.markFlawlessCampaignComplete) {
+    progressUpdate.markFlawlessRun = true;
+  }
+
+  if (update.isReplayed !== undefined) {
+    progressUpdate.isReplayed = update.isReplayed;
+  }
+
+  if (
+    !progressUpdate.incrementPlayed &&
+    !progressUpdate.incrementCorrectAnswers &&
+    !progressUpdate.markLevelPassed &&
+    !progressUpdate.markCompleteTheGame &&
+    !progressUpdate.markFlawlessRun &&
+    progressUpdate.isReplayed === undefined
+  ) {
+    return undefined;
+  }
+
+  return progressUpdate;
 }
 
 /** Deduct spendable coins only (TotalCoinEarned is never reduced). */

@@ -60,6 +60,14 @@ export interface AchievementSessionUpdate {
   markFirstPlay?: boolean;
   /** Increment PlayedCount and today's daily playCount (game start). */
   incrementPlayCount?: boolean;
+  /** Increment Users list GameProgress followThePath.correctAnswers. */
+  incrementCorrectAnswers?: number;
+  /** Set Users list GameProgress followThePath.completeTheGame when campaign level 3 is finished. */
+  markCompleteTheGame?: boolean;
+  /** Record a campaign level as passed in Users list GameProgress followThePath.passedLevels. */
+  markLevelPassed?: number;
+  /** Set Users list GameProgress followThePath.isReplayed on game start (false = first campaign run). */
+  isReplayed?: boolean;
   /** Set when the player starts a run after free mode is unlocked. */
   markReplayAfterCompleted?: boolean;
   /** Set when the player finishes all 3 campaign levels without losing a heart. */

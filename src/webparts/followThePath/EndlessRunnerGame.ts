@@ -2440,12 +2440,13 @@ export class EndlessRunnerGame {
         this._sessionXpByLevel[levelIndex] = xpEarned;
       }
 
-      if (this._currentLevel >= MAX_QUESTION_LEVEL && this._sessionHeartsLost === 0) {
-        this._saveAchievements({
-          markFlawlessCampaignComplete: true,
-          coinsCollected: 0
-        });
-      }
+      this._saveAchievements({
+        markLevelPassed: this._currentLevel,
+        markCompleteTheGame: this._currentLevel >= MAX_QUESTION_LEVEL,
+        markFlawlessCampaignComplete:
+          this._currentLevel >= MAX_QUESTION_LEVEL && this._sessionHeartsLost === 0,
+        coinsCollected: 0
+      });
     }
 
     this._state = 'levelComplete';
@@ -2669,6 +2670,10 @@ export class EndlessRunnerGame {
       this._obstaclePenalty = 0;
       this._grantPowerShieldOnResume = true;
       this._playSfx(this._correctSound);
+      this._saveAchievements({
+        incrementCorrectAnswers: 1,
+        coinsCollected: 0
+      });
     } else {
       this._applyWrongAnswerPenalty();
       this._triggerWrongAnswerScreenShake();
@@ -4007,6 +4012,7 @@ export class EndlessRunnerGame {
       markFirstPlay: !this._achievementData.firstTimePlay,
       incrementPlayCount: true,
       markReplayAfterCompleted: this._freeModeUnlocked,
+      isReplayed: this._freeModeUnlocked,
       coinsCollected: 0
     });
   }
@@ -4014,6 +4020,10 @@ export class EndlessRunnerGame {
   private _saveAchievements(update: {
     markFirstPlay?: boolean;
     incrementPlayCount?: boolean;
+    incrementCorrectAnswers?: number;
+    markLevelPassed?: number;
+    markCompleteTheGame?: boolean;
+    isReplayed?: boolean;
     markReplayAfterCompleted?: boolean;
     markFlawlessCampaignComplete?: boolean;
     coinsCollected: number;

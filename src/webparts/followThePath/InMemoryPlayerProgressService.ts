@@ -10,7 +10,8 @@ import {
   resolveDailyHearts,
   applyAchievementSessionUpdate,
   mergeGameAchievementsForSave,
-  incrementFollowThePathPlayedInUserGameData,
+  buildFollowThePathGameProgressUpdateFromSession,
+  updateFollowThePathInUserGameData,
   USERS_TOTAL_PLAYED_GAME_COUNT_MAX,
   type AchievementSessionUpdate,
   type FollowThePathProgressData,
@@ -101,10 +102,12 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
       };
     }
 
-    if (update.incrementPlayCount && this._profile) {
+    const gameProgressUpdate = buildFollowThePathGameProgressUpdateFromSession(update);
+
+    if (gameProgressUpdate && this._profile) {
       this._profile = {
         ...this._profile,
-        gameProgressJson: incrementFollowThePathPlayedInUserGameData(this._profile.gameProgressJson)
+        gameProgressJson: updateFollowThePathInUserGameData(this._profile.gameProgressJson, gameProgressUpdate)
       };
     }
 

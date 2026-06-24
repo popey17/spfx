@@ -19,7 +19,8 @@ import {
   writeUserTotalsToBody,
   writeUserCoinSpendBody,
   writeUserTotalPlayedGameCountIncrementBody,
-  writeUserFollowThePathPlayedIncrementBody,
+  writeUserFollowThePathGameProgressBody,
+  buildFollowThePathGameProgressUpdateFromSession,
   writeDailyHeartsToBody,
   getUsersListScalarSelectFieldsForGame1,
   getDailyHeartsDayKey,
@@ -224,13 +225,20 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
       };
     }
 
-    if (update.incrementPlayCount && this._profile.listItemId !== undefined) {
-      const gameProgressBody = writeUserFollowThePathPlayedIncrementBody(this._profile.gameProgressJson);
-      await this._patchListItem(this._usersListTitle, this._profile.listItemId, gameProgressBody);
-      this._profile = {
-        ...this._profile,
-        gameProgressJson: String(gameProgressBody[USERS_LIST_CONFIG.fields.gameProgress])
-      };
+    if (this._profile.listItemId !== undefined) {
+      const gameProgressUpdate = buildFollowThePathGameProgressUpdateFromSession(update);
+
+      if (gameProgressUpdate) {
+        const gameProgressBody = writeUserFollowThePathGameProgressBody(
+          this._profile.gameProgressJson,
+          gameProgressUpdate
+        );
+        await this._patchListItem(this._usersListTitle, this._profile.listItemId, gameProgressBody);
+        this._profile = {
+          ...this._profile,
+          gameProgressJson: String(gameProgressBody[USERS_LIST_CONFIG.fields.gameProgress])
+        };
+      }
     }
 
     if (this._game1DataListItemId !== undefined) {
