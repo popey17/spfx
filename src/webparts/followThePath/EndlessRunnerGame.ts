@@ -2675,6 +2675,10 @@ export class EndlessRunnerGame {
       this._obstaclePenalty = 0;
       this._grantPowerShieldOnResume = true;
       this._playSfx(this._correctSound);
+      this._saveAchievements({
+        incrementCorrectAnswers: 1,
+        coinsCollected: 0
+      });
     } else {
       this._applyWrongAnswerPenalty();
       this._triggerWrongAnswerScreenShake();
@@ -4021,6 +4025,7 @@ export class EndlessRunnerGame {
   private _saveAchievements(update: {
     markFirstPlay?: boolean;
     incrementPlayCount?: boolean;
+    incrementCorrectAnswers?: number;
     markLevelPassed?: number;
     markCompleteTheGame?: boolean;
     isReplayed?: boolean;

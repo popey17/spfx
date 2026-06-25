@@ -60,6 +60,8 @@ export interface AchievementSessionUpdate {
   markFirstPlay?: boolean;
   /** Increment PlayedCount and today's daily playCount (game start). */
   incrementPlayCount?: boolean;
+  /** Increment GameProgress followThePath.correctAnswers. */
+  incrementCorrectAnswers?: number;
   /** Set ActivityLog CompleteGameOnHardDifficulty when campaign level 3 is finished. */
   markCompleteTheGame?: boolean;
   /** Campaign level just passed (level 2 -> ActivityLog CompleteGameOnMediumDifficulty). */

@@ -12,6 +12,8 @@ import {
   mergeGameAchievementsForSave,
   buildFollowThePathActivityLogUpdateFromSession,
   updateFollowThePathInUserActivityLog,
+  buildFollowThePathGameProgressUpdateFromSession,
+  updateFollowThePathInUserGameProgress,
   USERS_TOTAL_PLAYED_GAME_COUNT_MAX,
   type AchievementSessionUpdate,
   type FollowThePathProgressData,
@@ -103,12 +105,25 @@ export class InMemoryPlayerProgressService implements IPlayerProgressService {
     }
 
     const activityLogUpdate = buildFollowThePathActivityLogUpdateFromSession(update);
+    const gameProgressUpdate = buildFollowThePathGameProgressUpdateFromSession(update);
 
-    if (activityLogUpdate && this._profile) {
-      this._profile = {
-        ...this._profile,
-        activityLogJson: updateFollowThePathInUserActivityLog(this._profile.activityLogJson, activityLogUpdate)
-      };
+    if (this._profile) {
+      if (activityLogUpdate) {
+        this._profile = {
+          ...this._profile,
+          activityLogJson: updateFollowThePathInUserActivityLog(this._profile.activityLogJson, activityLogUpdate)
+        };
+      }
+
+      if (gameProgressUpdate) {
+        this._profile = {
+          ...this._profile,
+          gameProgressJson: updateFollowThePathInUserGameProgress(
+            this._profile.gameProgressJson,
+            gameProgressUpdate
+          )
+        };
+      }
     }
 
     this._record = {

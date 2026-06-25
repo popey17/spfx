@@ -21,6 +21,8 @@ import {
   writeUserTotalPlayedGameCountIncrementBody,
   writeUserFollowThePathActivityLogBody,
   buildFollowThePathActivityLogUpdateFromSession,
+  writeUserFollowThePathGameProgressBody,
+  buildFollowThePathGameProgressUpdateFromSession,
   writeDailyHeartsToBody,
   getUsersListScalarSelectFieldsForGame1,
   getDailyHeartsDayKey,
@@ -226,18 +228,41 @@ export class SharePointPlayerProgressService implements IPlayerProgressService {
     }
 
     if (this._profile.listItemId !== undefined) {
+      const usersListItemId = this._profile.listItemId;
       const activityLogUpdate = buildFollowThePathActivityLogUpdateFromSession(update);
+      const gameProgressUpdate = buildFollowThePathGameProgressUpdateFromSession(update);
+      const usersBody: Record<string, string> = {};
 
       if (activityLogUpdate) {
         const activityLogBody = writeUserFollowThePathActivityLogBody(
           this._profile.activityLogJson,
           activityLogUpdate
         );
-        await this._patchListItem(this._usersListTitle, this._profile.listItemId, activityLogBody);
+        usersBody[USERS_LIST_CONFIG.fields.activityLog] = String(
+          activityLogBody[USERS_LIST_CONFIG.fields.activityLog]
+        );
         this._profile = {
           ...this._profile,
-          activityLogJson: String(activityLogBody[USERS_LIST_CONFIG.fields.activityLog])
+          activityLogJson: usersBody[USERS_LIST_CONFIG.fields.activityLog]
         };
+      }
+
+      if (gameProgressUpdate) {
+        const gameProgressBody = writeUserFollowThePathGameProgressBody(
+          this._profile.gameProgressJson,
+          gameProgressUpdate
+        );
+        usersBody[USERS_LIST_CONFIG.fields.gameProgress] = String(
+          gameProgressBody[USERS_LIST_CONFIG.fields.gameProgress]
+        );
+        this._profile = {
+          ...this._profile,
+          gameProgressJson: usersBody[USERS_LIST_CONFIG.fields.gameProgress]
+        };
+      }
+
+      if (Object.keys(usersBody).length > 0) {
+        await this._patchListItem(this._usersListTitle, usersListItemId, usersBody);
       }
     }
 

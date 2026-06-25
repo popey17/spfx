@@ -32,7 +32,7 @@ export { getDailyHeartsDayKey, parseDateOverrideFromUrl } from './gameDateContex
  * | MiniQuestXP | MasteryQuestXP |
  * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
  * | LeaderBoardData (JSON — individual top 50 / LOBT top 10 status; synced on leaderboard open) |
- * | GameProgress (JSON — per-game stats owned by other experiences; preserved by this game) |
+ * | GameProgress (JSON — per-game stats, e.g. followThePath.played / correctAnswers; other keys preserved) |
  * | ActivityLog (JSON — cross-game milestone flags; only matching keys are set to true, existing keys preserved) |
  *
  * TotalCoin — spendable balance (increases on earn, decreases on spend e.g. shop).
@@ -135,7 +135,7 @@ export interface UserProfileRecord {
   game1Level3Xp: number;
   totalPlayedGameCount: number;
   leaderBoardData?: UserLeaderBoardData;
-  /** Raw Users list GameProgress JSON (read only by this game). */
+  /** Raw Users list GameProgress JSON (followThePath stats merged in; other keys preserved). */
   gameProgressJson?: string;
   /** Raw Users list ActivityLog JSON (preserved except matching milestone flags). */
   activityLogJson?: string;
@@ -758,6 +758,74 @@ export function parseUserGameDataJson(raw: string | undefined): Record<string, u
   } catch {
     return {};
   }
+}
+
+/** followThePath stats stored under GameProgress.followThePath. */
+export interface FollowThePathGameProgressUpdate {
+  incrementPlayed?: boolean;
+  incrementCorrectAnswers?: number;
+}
+
+function readFollowThePathGameProgress(data: Record<string, unknown>): Record<string, unknown> {
+  const existing = data.followThePath;
+
+  if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+    return { ...(existing as Record<string, unknown>) };
+  }
+
+  return {};
+}
+
+/** Merge followThePath.played / correctAnswers into GameProgress, preserving all other keys. */
+export function updateFollowThePathInUserGameProgress(
+  raw: string | undefined,
+  update: FollowThePathGameProgressUpdate
+): string {
+  const data = parseUserGameDataJson(raw);
+  const followThePath = readFollowThePathGameProgress(data);
+
+  if (update.incrementPlayed) {
+    followThePath.played = Math.max(0, toNumber(followThePath.played)) + 1;
+  }
+
+  if (update.incrementCorrectAnswers && update.incrementCorrectAnswers > 0) {
+    followThePath.correctAnswers =
+      Math.max(0, toNumber(followThePath.correctAnswers)) + update.incrementCorrectAnswers;
+  }
+
+  return JSON.stringify({
+    ...data,
+    followThePath
+  });
+}
+
+export function writeUserFollowThePathGameProgressBody(
+  rawGameProgressJson: string | undefined,
+  update: FollowThePathGameProgressUpdate
+): Record<string, string> {
+  return {
+    [USERS_LIST_CONFIG.fields.gameProgress]: updateFollowThePathInUserGameProgress(rawGameProgressJson, update)
+  };
+}
+
+export function buildFollowThePathGameProgressUpdateFromSession(
+  update: AchievementSessionUpdate
+): FollowThePathGameProgressUpdate | undefined {
+  const gameProgressUpdate: FollowThePathGameProgressUpdate = {};
+
+  if (update.incrementPlayCount) {
+    gameProgressUpdate.incrementPlayed = true;
+  }
+
+  if (update.incrementCorrectAnswers && update.incrementCorrectAnswers > 0) {
+    gameProgressUpdate.incrementCorrectAnswers = update.incrementCorrectAnswers;
+  }
+
+  if (!gameProgressUpdate.incrementPlayed && !gameProgressUpdate.incrementCorrectAnswers) {
+    return undefined;
+  }
+
+  return gameProgressUpdate;
 }
 
 export const USER_ACTIVITY_LOG_MILESTONE_KEYS = {
