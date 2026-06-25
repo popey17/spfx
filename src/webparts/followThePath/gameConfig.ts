@@ -723,7 +723,7 @@ export const HUD = {
 export const MOBILE_CONTROLS = {
   enabled: true,
   forceEnable: false,
-  buttonSize: 50,
+  buttonSize: 80,
   marginX: 28,
   marginBottom: 36,
   buttonGap: 10,

@@ -60,18 +60,18 @@ export interface AchievementSessionUpdate {
   markFirstPlay?: boolean;
   /** Increment PlayedCount and today's daily playCount (game start). */
   incrementPlayCount?: boolean;
-  /** Increment Users list GameProgress followThePath.correctAnswers. */
-  incrementCorrectAnswers?: number;
-  /** Set Users list GameProgress followThePath.completeTheGame when campaign level 3 is finished. */
+  /** Set ActivityLog CompleteGameOnHardDifficulty when campaign level 3 is finished. */
   markCompleteTheGame?: boolean;
-  /** Record a campaign level as passed in Users list GameProgress followThePath.passedLevels. */
+  /** Campaign level just passed (level 2 -> ActivityLog CompleteGameOnMediumDifficulty). */
   markLevelPassed?: number;
-  /** Set Users list GameProgress followThePath.isReplayed on game start (false = first campaign run). */
+  /** Set ActivityLog ReplayCompletedPlanet on game start when replaying after completion. */
   isReplayed?: boolean;
   /** Set when the player starts a run after free mode is unlocked. */
   markReplayAfterCompleted?: boolean;
   /** Set when the player finishes all 3 campaign levels without losing a heart. */
   markFlawlessCampaignComplete?: boolean;
+  /** Set Users list ActivityLog LoseAll3Lives when all daily hearts are lost. */
+  markLoseAll3Lives?: boolean;
   /** Coins written on this save (delta since last save). */
   coinsCollected: number;
 }

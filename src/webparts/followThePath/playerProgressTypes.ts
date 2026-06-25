@@ -32,7 +32,8 @@ export { getDailyHeartsDayKey, parseDateOverrideFromUrl } from './gameDateContex
  * | MiniQuestXP | MasteryQuestXP |
  * | Game1Level1XP | Game1Level2XP | Game1Level3XP |
  * | LeaderBoardData (JSON — individual top 50 / LOBT top 10 status; synced on leaderboard open) |
- * | GameProgress (JSON — per-game stats keyed by game id, e.g. followThePath.played, correctAnswers, passedLevels, completeTheGame, flawlessRun, isReplayed) |
+ * | GameProgress (JSON — per-game stats owned by other experiences; preserved by this game) |
+ * | ActivityLog (JSON — cross-game milestone flags; only matching keys are set to true, existing keys preserved) |
  *
  * TotalCoin — spendable balance (increases on earn, decreases on spend e.g. shop).
  * TotalCoinEarned — lifetime coins earned; only ever increases.
@@ -64,7 +65,9 @@ export const USERS_LIST_CONFIG = {
     totalPlayedGameCount: 'TotalPlayedGame',
     leaderBoardData: 'LeaderBoardData',
     /** Cross-game JSON blob (followThePath, complianceTower, etc.). Display name GameProgress. */
-    gameProgress: 'GameProgress'
+    gameProgress: 'GameProgress',
+    /** Cross-game milestone flags shared by the portal. */
+    activityLog: 'ActivityLog'
   }
 } as const;
 
@@ -88,7 +91,8 @@ export function getUsersListScalarSelectFieldsForGame1(): string[] {
     fields.game1Level2Xp,
     fields.game1Level3Xp,
     fields.leaderBoardData,
-    fields.gameProgress
+    fields.gameProgress,
+    fields.activityLog
   ];
 }
 
@@ -131,8 +135,10 @@ export interface UserProfileRecord {
   game1Level3Xp: number;
   totalPlayedGameCount: number;
   leaderBoardData?: UserLeaderBoardData;
-  /** Raw Users list GameProgress JSON (preserved verbatim except followThePath updates). */
+  /** Raw Users list GameProgress JSON (read only by this game). */
   gameProgressJson?: string;
+  /** Raw Users list ActivityLog JSON (preserved except matching milestone flags). */
+  activityLogJson?: string;
 }
 
 export interface FollowThePathProgressData {
@@ -558,10 +564,31 @@ export function readUserProfileFromListItem(item: Record<string, unknown>): User
     String(item[fields.leaderBoardData] || '')
   );
 
-  const rawGameProgress = String(item[fields.gameProgress] || '').trim();
-  profile.gameProgressJson = rawGameProgress || undefined;
+  profile.gameProgressJson = readJsonFieldText(item[fields.gameProgress]);
+  profile.activityLogJson = readJsonFieldText(item[fields.activityLog]);
 
   return profile;
+}
+
+function readJsonFieldText(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  }
+
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return undefined;
+    }
+  }
+
+  return undefined;
 }
 
 export function parseLeaderBoardDataFromJson(raw: string): UserLeaderBoardData | undefined {
@@ -733,143 +760,111 @@ export function parseUserGameDataJson(raw: string | undefined): Record<string, u
   }
 }
 
-/** Increment followThePath.played in Users list GameProgress without touching other games. */
-export interface FollowThePathGameProgressUpdate {
-  incrementPlayed?: boolean;
-  incrementCorrectAnswers?: number;
+export const USER_ACTIVITY_LOG_MILESTONE_KEYS = {
+  completeGameWithoutLosingLife: 'CompleteGameWithoutLosingLife',
+  completeGameOnMediumDifficulty: 'CompleteGameOnMediumDifficulty',
+  completeGameOnHardDifficulty: 'CompleteGameOnHardDifficulty',
+  loseAll3Lives: 'LoseAll3Lives',
+  replayCompletedPlanet: 'ReplayCompletedPlanet'
+} as const;
+
+/** Top-level ActivityLog milestone flags set when the player hits each event. */
+export interface FollowThePathActivityLogUpdate {
   markLevelPassed?: number;
   markCompleteTheGame?: boolean;
   markFlawlessRun?: boolean;
+  markLoseAll3Lives?: boolean;
   isReplayed?: boolean;
 }
 
-function normalizePassedLevels(value: unknown): number[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const levels: number[] = [];
-
-  for (let i = 0; i < value.length; i++) {
-    const level = Math.floor(toNumber(value[i]));
-
-    if (level >= 1 && level <= MAX_QUESTION_LEVEL && levels.indexOf(level) === -1) {
-      levels.push(level);
-    }
-  }
-
-  return levels.sort((left, right) => left - right);
+function setActivityLogMilestone(data: Record<string, unknown>, key: string): void {
+  data[key] = true;
 }
 
-function readFollowThePathGameProgress(data: Record<string, unknown>): Record<string, unknown> {
-  const existing = data.followThePath;
+function applyActivityLogMilestones(
+  data: Record<string, unknown>,
+  update: FollowThePathActivityLogUpdate
+): void {
+  const keys = USER_ACTIVITY_LOG_MILESTONE_KEYS;
 
-  if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
-    return { ...(existing as Record<string, unknown>) };
+  if (update.markFlawlessRun) {
+    setActivityLogMilestone(data, keys.completeGameWithoutLosingLife);
   }
 
-  return {};
-}
-
-export function updateFollowThePathInUserGameData(
-  raw: string | undefined,
-  update: FollowThePathGameProgressUpdate
-): string {
-  const data = parseUserGameDataJson(raw);
-  const followThePath = readFollowThePathGameProgress(data);
-
-  if (update.incrementPlayed) {
-    followThePath.played = Math.max(0, toNumber(followThePath.played)) + 1;
-  }
-
-  if (update.incrementCorrectAnswers && update.incrementCorrectAnswers > 0) {
-    followThePath.correctAnswers =
-      Math.max(0, toNumber(followThePath.correctAnswers)) + update.incrementCorrectAnswers;
-  }
-
-  if (update.markLevelPassed && update.markLevelPassed >= 1 && update.markLevelPassed <= MAX_QUESTION_LEVEL) {
-    const passedLevels = normalizePassedLevels(followThePath.passedLevels);
-
-    if (passedLevels.indexOf(update.markLevelPassed) === -1) {
-      passedLevels.push(update.markLevelPassed);
-      passedLevels.sort((left, right) => left - right);
-    }
-
-    followThePath.passedLevels = passedLevels;
+  if (update.markLevelPassed === 2) {
+    setActivityLogMilestone(data, keys.completeGameOnMediumDifficulty);
   }
 
   if (update.markCompleteTheGame) {
-    followThePath.completeTheGame = true;
+    setActivityLogMilestone(data, keys.completeGameOnHardDifficulty);
   }
 
-  if (update.markFlawlessRun) {
-    followThePath.flawlessRun = true;
+  if (update.markLoseAll3Lives) {
+    setActivityLogMilestone(data, keys.loseAll3Lives);
   }
 
-  if (update.isReplayed !== undefined) {
-    followThePath.isReplayed = update.isReplayed;
+  if (update.isReplayed === true) {
+    setActivityLogMilestone(data, keys.replayCompletedPlanet);
   }
-
-  return JSON.stringify({
-    ...data,
-    followThePath
-  });
 }
 
-export function incrementFollowThePathPlayedInUserGameData(raw: string | undefined): string {
-  return updateFollowThePathInUserGameData(raw, { incrementPlayed: true });
+/** Set matching ActivityLog milestone flags to true, preserving all other keys. */
+export function updateFollowThePathInUserActivityLog(
+  raw: string | undefined,
+  update: FollowThePathActivityLogUpdate
+): string {
+  const data = parseUserGameDataJson(raw);
+
+  applyActivityLogMilestones(data, update);
+
+  return JSON.stringify(data);
 }
 
-export function writeUserFollowThePathGameProgressBody(
-  rawGameProgressJson: string | undefined,
-  update: FollowThePathGameProgressUpdate
+export function writeUserFollowThePathActivityLogBody(
+  rawActivityLogJson: string | undefined,
+  update: FollowThePathActivityLogUpdate
 ): Record<string, string> {
   return {
-    [USERS_LIST_CONFIG.fields.gameProgress]: updateFollowThePathInUserGameData(rawGameProgressJson, update)
+    [USERS_LIST_CONFIG.fields.activityLog]: updateFollowThePathInUserActivityLog(rawActivityLogJson, update)
   };
 }
 
-export function buildFollowThePathGameProgressUpdateFromSession(
+export function buildFollowThePathActivityLogUpdateFromSession(
   update: AchievementSessionUpdate
-): FollowThePathGameProgressUpdate | undefined {
-  const progressUpdate: FollowThePathGameProgressUpdate = {};
-
-  if (update.incrementPlayCount) {
-    progressUpdate.incrementPlayed = true;
-  }
-
-  if (update.incrementCorrectAnswers && update.incrementCorrectAnswers > 0) {
-    progressUpdate.incrementCorrectAnswers = update.incrementCorrectAnswers;
-  }
+): FollowThePathActivityLogUpdate | undefined {
+  const activityLogUpdate: FollowThePathActivityLogUpdate = {};
 
   if (update.markCompleteTheGame) {
-    progressUpdate.markCompleteTheGame = true;
+    activityLogUpdate.markCompleteTheGame = true;
   }
 
   if (update.markLevelPassed && update.markLevelPassed >= 1 && update.markLevelPassed <= MAX_QUESTION_LEVEL) {
-    progressUpdate.markLevelPassed = update.markLevelPassed;
+    activityLogUpdate.markLevelPassed = update.markLevelPassed;
   }
 
   if (update.markFlawlessCampaignComplete) {
-    progressUpdate.markFlawlessRun = true;
+    activityLogUpdate.markFlawlessRun = true;
   }
 
-  if (update.isReplayed !== undefined) {
-    progressUpdate.isReplayed = update.isReplayed;
+  if (update.isReplayed === true) {
+    activityLogUpdate.isReplayed = true;
+  }
+
+  if (update.markLoseAll3Lives) {
+    activityLogUpdate.markLoseAll3Lives = true;
   }
 
   if (
-    !progressUpdate.incrementPlayed &&
-    !progressUpdate.incrementCorrectAnswers &&
-    !progressUpdate.markLevelPassed &&
-    !progressUpdate.markCompleteTheGame &&
-    !progressUpdate.markFlawlessRun &&
-    progressUpdate.isReplayed === undefined
+    !activityLogUpdate.markLevelPassed &&
+    !activityLogUpdate.markCompleteTheGame &&
+    !activityLogUpdate.markFlawlessRun &&
+    !activityLogUpdate.markLoseAll3Lives &&
+    !activityLogUpdate.isReplayed
   ) {
     return undefined;
   }
 
-  return progressUpdate;
+  return activityLogUpdate;
 }
 
 /** Deduct spendable coins only (TotalCoinEarned is never reduced). */

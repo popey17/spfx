@@ -1593,6 +1593,11 @@ export class EndlessRunnerGame {
     this._stopAllMusic();
     this._playSfx(this._gameOverSound);
 
+    this._saveAchievements({
+      markLoseAll3Lives: true,
+      coinsCollected: 0
+    });
+
     this._savePlayerProgress(true)
       .then(() => {
         this._refreshShopCoinBalance();
@@ -2670,10 +2675,6 @@ export class EndlessRunnerGame {
       this._obstaclePenalty = 0;
       this._grantPowerShieldOnResume = true;
       this._playSfx(this._correctSound);
-      this._saveAchievements({
-        incrementCorrectAnswers: 1,
-        coinsCollected: 0
-      });
     } else {
       this._applyWrongAnswerPenalty();
       this._triggerWrongAnswerScreenShake();
@@ -4020,12 +4021,12 @@ export class EndlessRunnerGame {
   private _saveAchievements(update: {
     markFirstPlay?: boolean;
     incrementPlayCount?: boolean;
-    incrementCorrectAnswers?: number;
     markLevelPassed?: number;
     markCompleteTheGame?: boolean;
     isReplayed?: boolean;
     markReplayAfterCompleted?: boolean;
     markFlawlessCampaignComplete?: boolean;
+    markLoseAll3Lives?: boolean;
     coinsCollected: number;
   }): void {
     if (!this._progressService) {
